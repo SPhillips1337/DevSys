@@ -141,6 +141,36 @@ def get_deploy_history(task_id):
         return jsonify(json.load(f))
 
 
+@app.route('/api/tasks/<task_id>/tests/latest', methods=['GET'])
+@auth_required
+def get_latest_test_report(task_id):
+    d = task_path(task_id)
+    records_file = os.path.join(d, 'test_records.json')
+    if not os.path.exists(records_file):
+        return jsonify({'error': 'no test records'}), 404
+    try:
+        with open(records_file) as f:
+            records = json.load(f)
+    except Exception:
+        return jsonify({'error': 'failed to read test records'}), 500
+    if not records:
+        return jsonify({'error': 'no test records'}), 404
+    latest = records[-1]
+    report_path = latest.get('report')
+    if not report_path:
+        return jsonify({'latest': latest})
+    # report_path is relative to TASKS_DIR/<task_id>/
+    full_report = os.path.join(d, os.path.relpath(report_path, start=task_id))
+    if not os.path.exists(full_report):
+        return jsonify({'latest': latest, 'warning': 'report file not found'}), 200
+    try:
+        with open(full_report) as rf:
+            content = rf.read()
+    except Exception:
+        content = None
+    return jsonify({'latest': latest, 'report_content': content})
+
+
 @app.route('/api/tasks/<task_id>/rollback', methods=['POST'])
 @auth_required
 def rollback_deploy(task_id):

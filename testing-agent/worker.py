@@ -5,11 +5,14 @@ import yaml
 import subprocess
 import requests
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import xml.etree.ElementTree as ET
 
 WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
 MANAGER_URL = os.environ.get('MANAGER_URL', 'http://manager:8080')
 MANAGER_API_TOKEN = os.environ.get('MANAGER_API_TOKEN')
 TASKS_DIR = os.path.join(WORKSPACE, 'tasks')
+CONCURRENCY = int(os.environ.get('TESTING_CONCURRENCY', '2'))
 
 os.makedirs(TASKS_DIR, exist_ok=True)
 
@@ -17,7 +20,7 @@ HEADERS = {}
 if MANAGER_API_TOKEN:
     HEADERS['Authorization'] = f"Bearer {MANAGER_API_TOKEN}"
 
-print('Testing agent started, workspace:', WORKSPACE, 'manager:', MANAGER_URL)
+print('Testing agent started, workspace:', WORKSPACE, 'manager:', MANAGER_URL, 'concurrency=', CONCURRENCY)
 
 
 def read_meta(task_dir):
@@ -26,6 +29,27 @@ def read_meta(task_dir):
         return None
     with open(meta_file) as f:
         return json.load(f)
+
+
+def write_junit_xml(report_xml_path, task_id, success, exit_code, output):
+    testsuites = ET.Element('testsuites')
+    testsuite = ET.SubElement(testsuites, 'testsuite', attrib={
+        'name': f'task-{task_id}-tests',
+        'tests': '1',
+        'failures': '0' if success else '1',
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    })
+    testcase = ET.SubElement(testsuite, 'testcase', attrib={
+        'classname': f'task.{task_id}',
+        'name': 'acceptance'
+    })
+    if not success:
+        failure = ET.SubElement(testcase, 'failure', attrib={'message': f'exit_code={exit_code}'})
+        failure.text = output or ''
+    sysout = ET.SubElement(testcase, 'system-out')
+    sysout.text = output or ''
+    tree = ET.ElementTree(testsuites)
+    tree.write(report_xml_path, encoding='utf-8', xml_declaration=True)
 
 
 def run_tests(task_dir, spec, run_dir=None):
@@ -47,6 +71,7 @@ def run_tests(task_dir, spec, run_dir=None):
 
     timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
     report_file = os.path.join(reports_dir, f'test-report-{timestamp}.txt')
+    report_xml = os.path.join(reports_dir, f'test-report-{timestamp}.xml')
     try:
         proc = subprocess.run(cmd, cwd=target_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         output = proc.stdout.decode('utf-8', errors='replace')
@@ -58,19 +83,77 @@ def run_tests(task_dir, spec, run_dir=None):
             f.write(f"TIMESTAMP: {datetime.utcnow().isoformat()}Z\n")
             f.write("--- OUTPUT ---\n")
             f.write(output or "(no output)\n")
+        # Write JUnit XML for CI
+        write_junit_xml(report_xml, os.path.basename(task_dir), success, proc.returncode, output)
         return success, report_file
     except subprocess.TimeoutExpired as e:
         with open(report_file, 'w') as f:
             f.write(f"RESULT: FAIL\nEXIT_CODE: TIMEOUT\nTIMESTAMP: {datetime.utcnow().isoformat()}Z\n--- OUTPUT ---\nTimeout: {e}\n")
+        write_junit_xml(report_xml, os.path.basename(task_dir), False, 'TIMEOUT', f'Timeout: {e}')
         return False, report_file
     except Exception as e:
         with open(report_file, 'w') as f:
             f.write(f"RESULT: ERROR\nEXIT_CODE: ERROR\nTIMESTAMP: {datetime.utcnow().isoformat()}Z\n--- OUTPUT ---\nError running tests: {e}\n")
+        write_junit_xml(report_xml, os.path.basename(task_dir), False, 'ERROR', f'Error running tests: {e}')
         return False, report_file
+
+
+def process_task(name):
+    task_dir = os.path.join(TASKS_DIR, name)
+    meta = read_meta(task_dir)
+    if not meta:
+        return
+    status = meta.get('status')
+    if status not in ('completed', 'ready_for_test'):
+        return
+    # Attempt to claim the task by setting status to 'testing'
+    try:
+        r = requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'testing'}, headers=HEADERS, timeout=5)
+        if r.status_code != 200:
+            # Could not claim
+            return
+    except Exception as e:
+        print('Failed to claim task', name, e)
+        return
+    # Re-read spec
+    spec = {}
+    spec_path = os.path.join(task_dir, 'spec.yaml')
+    if os.path.exists(spec_path):
+        try:
+            with open(spec_path) as f:
+                spec = yaml.safe_load(f) or {}
+        except Exception:
+            spec = {}
+    related = spec.get('related_task') if spec else None
+    run_dir = None
+    if related:
+        run_dir = os.path.join(TASKS_DIR, related)
+    ok, info = run_tests(task_dir, spec, run_dir=run_dir)
+    # Determine new status
+    new_status = 'tested' if ok else 'failed'
+    try:
+        requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': new_status}, headers=HEADERS, timeout=5)
+    except Exception as e:
+        print('Failed to update manager status', e)
+    # write test_records
+    records_file = os.path.join(task_dir, 'test_records.json')
+    rec = {'timestamp': datetime.utcnow().isoformat() + 'Z', 'ok': ok, 'report': info}
+    records = []
+    if os.path.exists(records_file):
+        try:
+            with open(records_file) as f:
+                records = json.load(f)
+        except Exception:
+            records = []
+    records.append(rec)
+    with open(records_file, 'w') as f:
+        json.dump(records, f)
+    print(f'Processed tests for {name}: ok={ok} report={info}')
 
 
 while True:
     try:
+        candidates = []
         for name in os.listdir(TASKS_DIR):
             task_dir = os.path.join(TASKS_DIR, name)
             if not os.path.isdir(task_dir):
@@ -79,55 +162,16 @@ while True:
             if not meta:
                 continue
             status = meta.get('status')
-            # Look for completed tasks that haven't been tested yet
-            if status not in ('completed', 'ready_for_test'):
-                continue
-            spec = {}
-            spec_path = os.path.join(task_dir, 'spec.yaml')
-            if os.path.exists(spec_path):
-                try:
-                    with open(spec_path) as f:
-                        spec = yaml.safe_load(f) or {}
-                except Exception:
-                    spec = {}
-            # Determine if tests should run in a related task dir
-            related = spec.get('related_task') if spec else None
-            run_dir = None
-            if related:
-                run_dir = os.path.join(TASKS_DIR, related)
-            # Run tests if present
-            ok, info = run_tests(task_dir, spec, run_dir=run_dir)
-            if info and info != 'no_tests':
-                report_rel = os.path.relpath(info, TASKS_DIR)
-            else:
-                report_rel = info
-            if info == 'no_tests':
-                # mark as tested but note no tests
-                try:
-                    requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'tested'}, headers=HEADERS, timeout=5)
-                except Exception as e:
-                    print('Failed to update manager status', e)
-                continue
-            # Update manager status and record report path in task dir
-            try:
-                new_status = 'tested' if ok else 'failed'
-                requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': new_status}, headers=HEADERS, timeout=5)
-            except Exception as e:
-                print('Failed to update manager status', e)
-            # write a small metadata entry
-            records_file = os.path.join(task_dir, 'test_records.json')
-            rec = {'timestamp': datetime.utcnow().isoformat() + 'Z', 'ok': ok, 'report': report_rel}
-            records = []
-            if os.path.exists(records_file):
-                try:
-                    with open(records_file) as f:
-                        records = json.load(f)
-                except Exception:
-                    records = []
-            records.append(rec)
-            with open(records_file, 'w') as f:
-                json.dump(records, f)
-            print(f'Tested task {name}: ok={ok} report={report_rel}')
+            if status in ('completed', 'ready_for_test'):
+                candidates.append(name)
+        if candidates:
+            with ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
+                futures = {ex.submit(process_task, name): name for name in candidates}
+                for fut in as_completed(futures):
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        print('Test worker error for', futures[fut], e)
     except Exception as e:
-        print('Testing worker error', e)
+        print('Testing worker main loop error', e)
     time.sleep(5)
