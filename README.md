@@ -30,6 +30,9 @@ Security
 - Do not commit `.env` — it is ignored by git. For production use replace `.env` with a secret manager or Docker secrets.
 - The stack is intended for local development / PoC only — do not expose services publicly without hardening.
 
+License
+This project is licensed under the MIT License — see `LICENSE` for details.
+
 Next steps
 - Integrate `spec-kit` for richer validation of task specs.
 - Add `testing-agent` and `monitoring-agent` to complete the pipeline.
