@@ -1,29 +1,38 @@
-# opencode in PHP Docker Container (devsys copy)
+# DevSys — Developer-in-a-Box PoC
 
-This directory contains a minimal copy of the files required to run the PHP + SSH container and the opencode setup extracted from your `n8n` project. The goal is to move this out of the `n8n` project so it can be managed separately.
+This repository contains a small Proof-of-Concept for a "developer-in-a-box" workflow where containerized agents collaborate to implement, test, deploy and monitor small projects.
 
-Included files
-- `docker-compose.yml` — the Compose configuration for the PHP container (and n8n entry for reference).
-- `Dockerfile.php` — Dockerfile used to build the PHP + ssh image.
-- `README.md` — this file (copied from the project).
+Key components
+- `manager` — HTTP API to accept user stories and create task specs.
+- `coding-agent` — runs opencode-like scaffolding to produce code/artifacts for tasks.
+- `deployment-agent` — deploys task artifacts into the local PHP container and verifies acceptance criteria.
+- `php` — a PHP/Apache container repurposed as a local deployment target (serves files from `/var/www/www`).
+- `workspace` — shared folder mounted into agents where tasks, artifacts, and deploys live.
 
-Note: the original `README.md` contains opencode setup and instructions. This copy is intended to be the starting point to run the PHP+SSH container separately.
-
-How to use
-1. Move into this directory on the host where your Docker environment runs:
-   - `cd /home/stephen/devsys`
-2. Adjust configuration as needed (ports, volumes). The current `docker-compose.yml` references `./n8n_data` for volumes — you may want to change that to a location under `devsys` or adjust mounts.
-3. Build and start the services:
+Quick start
+1. Copy `.env.example` to `.env` and set secure values (do NOT commit `.env`).
+   - `cp .env.example .env` and edit values.
+2. Build and start the stack:
    - `docker compose up -d --build`
-4. The PHP container exposes SSH on host port `2222` and HTTP on the host IP `192.168.5.215:80` as configured in the Compose file.
+3. Create a task via the manager API (example):
+   - `curl -X POST http://localhost:8080/api/tasks -H 'Content-Type: application/json' -d '{"id":"task-001","title":"Create blog","owner":"manager","kind":"deployment","deploy":true}'`
+4. Optionally trigger deploy explicitly:
+   - `curl -X POST http://localhost:8080/api/tasks/task-001/deploy`
+5. The deployed site will be served at `http://localhost:8081`.
 
-Security and migration notes
-- The `Dockerfile.php` in this directory contains a hardcoded user `n8nuser` with password `n8npass`. Update credentials or switch to key-based SSH before exposing to broader networks.
-- The opencode artifacts and configuration are not included here; the intent is to let you separate the container setup. If you want the opencode install and Supervisor config incorporated into this Docker image (so it starts opencode on container start), I can create a new Dockerfile and Compose service for `opencode` and include Supervisor configuration.
+Developer notes
+- The manager exposes endpoints to create tasks, update status, trigger deploys, list deploy history, and rollback.
+- Task specs live under `./workspace/tasks/<task-id>/spec.yaml`. Artifacts are placed in `./workspace/tasks/<task-id>/src` by the coding-agent.
+- Deployments are stored under `./workspace/deploy/<task-id>/current` and copied into `./workspace/www/` for serving by the PHP container.
+- The PHP container’s SSH user password is configured at runtime via `.env` (see `.env.example`) or by adding a public key.
 
-Next steps I can perform (optional)
-- Update `docker-compose.yml` to run opencode as a separate service.
-- Create a dedicated `Dockerfile` that installs `opencode` and Supervisor so the container starts `opencode` automatically.
-- Move any required application data from `/home/stephen/n8n/n8n_data/php` into `devsys` with sanitized content.
+Security
+- Do not commit `.env` — it is ignored by git. For production use replace `.env` with a secret manager or Docker secrets.
+- The stack is intended for local development / PoC only — do not expose services publicly without hardening.
 
-If you want me to proceed with any of the next steps, tell me which and I will implement it here in `/home/stephen/devsys`.
+Next steps
+- Integrate `spec-kit` for richer validation of task specs.
+- Add `testing-agent` and `monitoring-agent` to complete the pipeline.
+- Harden manager API with authentication and RBAC before exposing beyond localhost.
+
+If you want me to continue, tell me which next step to implement (e.g., add testing-agent skeleton, integrate spec-kit, or add manager auth).

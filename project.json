@@ -2,38 +2,38 @@
   "schemaVersion": "1.0.0",
   "name": "devsys-opencode-php-ssh",
   "slug": "devsys-opencode-php-ssh",
-  "summary": "Minimal dev/sys project containing a PHP+SSH Docker setup and documentation for running opencode inside the container.",
-  "version": "0.1.0",
+  "summary": "Developer-in-a-box PoC: PHP+SSH container with multi-agent PoC (manager, coding, deployment) to accept user stories, run opencode, deploy and verify artifacts.",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": "https://github.com/stephen/devsys-opencode-php-ssh",
   "goals": [
-    "Extract PHP+SSH container config out of the n8n project",
-    "Make a standalone devsys directory that can be run and managed separately",
-    "Provide instructions to connect by SSH and manage opencode running inside the container"
+    "Provide a standalone devsys environment for agent-driven development workflows",
+    "Demonstrate manager → coding → deployment automated flow with task handoffs",
+    "Offer a reproducible PoC for autonomous task execution with acceptance checks"
   ],
   "primary_features": [
-    "Docker Compose manifest for PHP+SSH",
-    "Dockerfile for PHP image with OpenSSH and n8nuser account",
-    "README with opencode installation and management notes"
+    "Docker Compose manifest for agent services and PHP deployment target",
+    "Manager HTTP API for task creation and lifecycle management",
+    "Coding agent that runs opencode-like scaffolding, and a deployment agent that deploys and verifies artifacts"
   ],
   "tech_stack": {
     "orchestration": "Docker Compose",
-    "container_base_image": "php:8.2-apache",
-    "service_manager_in_container": "Supervisor (installed at runtime)",
-    "opencode": "opencode 1.0.107 (installed via upstream installer)"
+    "container_base_image": "php:8.2-apache (for deployment target) / python:3.11-slim (agents)",
+    "service_manager_in_container": "Supervisor (optional runtime), simple entrypoint scripts",
+    "opencode": "opencode (invoked by coding-agent where available)"
   },
   "security_considerations": [
-    "Dockerfile contains a hardcoded user password (n8nuser:n8npass) — rotate before production",
-    "Temporary private key left on Docker host at /tmp/opencode_ssh_key — remove after copying to clients",
-    "SSH port 2222 is exposed on the host; ensure firewall rules or bind to localhost if not public",
-    "Running external installer with curl | bash is convenient but requires trust in upstream source"
+    "Hardcoded credentials removed from Dockerfile; runtime .env provides N8N_USER_PASSWORD and N8N_USER_PUBKEY — do not commit .env",
+    "Temporary private key earlier referenced should be removed from host after copying to clients",
+    "SSH host port remapped to 2223 for this PoC; ensure firewall rules and restrict exposure",
+    "Running external installers (curl | bash) requires trust in upstream sources"
   ],
   "development_state": {
-    "scaffold": "minimal",
-    "notes": "Files copied: docker-compose.yml, Dockerfile.php, README.md. start-services.sh and application data (n8n_data) are referenced but not included in this directory."
+    "scaffold": "PoC",
+    "notes": "Manager, coding-agent and deployment-agent implemented. start-services.sh included. Some files and features remain TODO (testing-agent, monitoring-agent, persistent DB)."
   },
   "development_plan": {
-    "currentPhase": 1,
+    "currentPhase": 2,
     "phases": [
       {
         "number": 1,
@@ -42,60 +42,85 @@
         "tasks": [
           { "name": "Copy docker-compose.yml, Dockerfile.php, README.md", "status": "completed" },
           { "name": "Confirm opencode can be installed inside container", "status": "completed" },
-          { "name": "Identify missing artifacts (start-services.sh, n8n_data)", "status": "in_progress" }
+          { "name": "Identify missing artifacts (start-services.sh, n8n_data)", "status": "completed" }
         ]
       },
       {
         "number": 2,
-        "name": "Make standalone",
-        "description": "Add required files and optional opencode service so devsys runs independently",
+        "name": "PoC agents",
+        "description": "Add manager, coding-agent, deployment-agent and basic task flow",
         "tasks": [
-          { "name": "Add or embed start-services.sh into devsys", "status": "pending" },
-          { "name": "Add opencode service to docker-compose.yml (optional)", "status": "pending" }
+          { "name": "Scaffold manager and coding-agent", "status": "completed" },
+          { "name": "Add deployment-agent with verification logic", "status": "completed" },
+          { "name": "Add spec validation and sample task", "status": "completed" }
+        ]
+      },
+      {
+        "number": 3,
+        "name": "Hardening & features",
+        "description": "Add testing/monitoring agents, persistent stores, auth and CI",
+        "tasks": [
+          { "name": "Integrate spec-kit fully", "status": "pending" },
+          { "name": "Add testing-agent and monitoring-agent", "status": "pending" }
         ]
       }
     ]
   },
   "todo": [
-    { "id": "1", "title": "Copy start-services.sh into devsys or refactor Dockerfile to not require it", "status": "pending", "priority": "high" },
-    { "id": "2", "title": "Move required n8n_data/php content or create a smaller demo site", "status": "pending", "priority": "medium" },
-    { "id": "3", "title": "Optionally create a dedicated opencode Docker service", "status": "pending", "priority": "low" },
-    { "id": "4", "title": "Remove temporary private key from Docker host after you copy it", "status": "pending", "priority": "high" }
+    { "id": "1", "title": "Integrate spec-kit validators into manager", "status": "pending", "priority": "high" },
+    { "id": "2", "title": "Implement testing-agent and CI checks", "status": "pending", "priority": "high" },
+    { "id": "3", "title": "Add manager API auth and RBAC", "status": "pending", "priority": "high" },
+    { "id": "4", "title": "Consider Postgres + Redis for task store and queues", "status": "pending", "priority": "medium" }
   ],
   "files_of_interest": [
     "docker-compose.yml",
     "Dockerfile.php",
     "README.md",
-    "start-services.sh (referenced, not included)"
+    "manager/app.py",
+    "deployment-agent/worker.py",
+    "coding-agent/worker.py"
   ],
   "open_questions": [
-    "Do you want opencode bundled into its own container or kept inside the PHP container?",
-    "Should the hardcoded password be removed and replaced with key-only auth?"
+    "Do you want opencode bundled into its own container or kept inside the coding-agent?",
+    "What level of autonomy should monitoring/auto-repair have? (auto-fix vs create task)"
   ],
   "contact": {
     "maintainer": "stephen",
     "location": "local host"
   },
   "how_to_run_locally": {
-    "summary": "Build and run the devsys compose stack",
+    "summary": "Build and run the devsys compose stack and use the manager API to create tasks",
     "steps": [
       "cd /home/stephen/devsys",
-      "Ensure start-services.sh is present in this directory (it is referenced by Dockerfile.php). If not, copy it from the original n8n folder or modify the Dockerfile.",
+      "Copy .env.example to .env and set secrets (N8N_USER_PASSWORD or N8N_USER_PUBKEY) — do not commit .env",
       "docker compose up -d --build",
-      "Check container status with: docker ps --format '{{.ID}} {{.Names}} {{.Image}} {{.Ports}}'",
-      "SSH into the container: ssh -i <your_key> -p 2222 n8nuser@<HOST_IP>"
+      "Check manager API: http://localhost:8080/api/tasks",
+      "Create a task (example): curl -X POST http://localhost:8080/api/tasks -H 'Content-Type: application/json' -d '{\"id\":\"task-001\",\"title\":\"Create blog\",\"owner\":\"manager\",\"kind\":\"deployment\",\"deploy\":true}'",
+      "Trigger deploy: POST /api/tasks/<id>/deploy",
+      "Dev site served at http://localhost:8081 (PHP container)"
     ],
     "environment": {
-      "SSH_PORT": "2222",
-      "OPENCODE_PORT": "3001 (if running inside container via supervisor)"
+      "MANAGER_PORT": "8080",
+      "DEPLOYMENT_HTTP_PORT": "8081",
+      "SSH_PORT": "2223"
     }
   },
-  "lastUpdated": "2025-11-24T14:38:00Z",
+  "lastUpdated": "2025-11-24T15:45:00Z",
   "api_endpoints": [
     {
       "endpoint": "/api/tasks",
       "method": "POST",
       "description": "Create a task from a user story"
+    },
+    {
+      "endpoint": "/api/tasks/<id>/deploy",
+      "method": "POST",
+      "description": "Mark task ready_for_deploy so deployment-agent will deploy it"
+    },
+    {
+      "endpoint": "/api/tasks/<id>/rollback",
+      "method": "POST",
+      "description": "Rollback a task deployment to a previous revision"
     }
   ],
   "external_services": {
@@ -103,60 +128,63 @@
   },
   "required_env": [
     "Docker & Docker Compose installed on host",
-    "Network access to fetch packages and opencode installer"
+    "Create a local .env from .env.example to set runtime secrets"
   ],
   "current_capabilities": [
-    "Build the PHP+SSH container from Dockerfile.php",
-    "SSH into container (key-based) and run opencode",
-    "Run opencode via Supervisor inside the running container"
+    "Manage tasks via manager API",
+    "Scaffold simple sites via coding-agent",
+    "Deploy artifacts and verify via deployment-agent",
+    "Record deployment revisions and perform rollbacks via manager API"
   ],
   "next_steps": [
-    "Add start-services.sh into devsys or refactor Dockerfile",
-    "Decide whether to add opencode as a dedicated service in docker-compose",
-    "Remove temporary private key from Docker host once copied to clients"
+    "Integrate spec-kit and CI",
+    "Add testing and monitoring agents",
+    "Harden manager API with auth and RBAC"
   ],
   "architecture": {
-    "overview": "Single Docker Compose file with a PHP container exposing SSH; opencode runs inside the container under Supervisor in the current setup.",
+    "overview": "Docker Compose with agent services (manager, coding-agent, deployment-agent) and a PHP container as local deployment target.",
     "components": {
-      "php": {
-        "description": "PHP Apache image with OpenSSH server and n8nuser account",
-        "implementation": "Dockerfile.php",
-        "files": ["Dockerfile.php"],
-        "status": "ready (needs start-services.sh)"
+      "manager": {
+        "description": "Task manager and API",
+        "implementation": "manager/app.py",
+        "files": ["manager/app.py", "manager/task_schema.json"],
+        "status": "ready"
       },
-      "opencode": {
-        "description": "Installed at runtime into the PHP container and managed by Supervisor",
-        "implementation": "installed via https://opencode.ai/install",
-        "files": ["README.md"],
-        "status": "running (when container is up and Supervisor configured)"
+      "coding-agent": {
+        "description": "Scaffolds code/artifacts from task specs (opencode placeholder)",
+        "implementation": "coding-agent/worker.py",
+        "files": ["coding-agent/worker.py"],
+        "status": "ready"
+      },
+      "deployment-agent": {
+        "description": "Deploys task artifacts to ./workspace/deploy/<task-id>/current and verifies acceptance",
+        "implementation": "deployment-agent/worker.py",
+        "files": ["deployment-agent/worker.py"],
+        "status": "ready"
+      },
+      "php": {
+        "description": "PHP Apache container used as a local deployment target",
+        "implementation": "Dockerfile.php",
+        "files": ["Dockerfile.php", "entrypoint.sh"],
+        "status": "ready"
       }
     }
   },
   "infrastructure": {
     "type": "docker-compose",
-    "notes": "Compose references local volumes (./n8n_data) which may need adjusting for this standalone directory",
+    "notes": "Compose references ./workspace for shared artifacts and ./workspace/www for served content",
     "files": ["docker-compose.yml"]
   },
-  "status": "experimental",
-  "concept": "Separate the PHP+SSH+opencode setup from the main n8n project so it can be managed independently for development and testing.",
+  "status": "poс",
+  "concept": "Agent-driven developer-in-a-box for rapid prototyping and automated task handoffs",
   "current_goals": [
-    "Make devsys self-contained by adding missing files and optionally an opencode service",
-    "Harden SSH access and remove hardcoded passwords"
+    "Finish spec-kit integration",
+    "Add testing and monitoring agents",
+    "Harden API and secrets management"
   ],
   "key_files": {
     "compose": "docker-compose.yml",
     "dockerfile_php": "Dockerfile.php",
     "readme": "README.md"
-  },
-  "features": {
-    "completed": ["Compose and Dockerfile extracted","Opencode installation verified inside container"],
-    "demo_ready": [],
-    "future_enhancements": ["Add dedicated opencode service","Implement manager/testing/deployment/monitoring agents"]
-  },
-  "progress_percent": 18,
-  "progress_state": "in_progress",
-  "next_version_goals": [
-    "Scaffold PoC agent services and workspace",
-    "Integrate spec-kit for task validation"
-  ]
+  }
 }
