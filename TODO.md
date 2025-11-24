@@ -24,10 +24,18 @@ These are recommended actions for the DevSys PoC and future hardening. Items mar
    - Ensure agents checkpoint progress and support idempotent re-runs.
 
 5. Agents & workflows
-   - testing-agent: implement a runner that executes provided tests, writes reports to `/workspace/tasks/<id>/reports`, and updates task status. (POC implemented: basic testing-agent)
-   - monitoring-agent: collect logs/metrics, run periodic health checks, and create follow-up tasks for regressions (POC idea implemented in deployment-agent creation of follow-ups).
-   - notification service: integrate Slack/email/webhooks for important events (failed deploys, rollbacks, critical alerts).
-   - Implement role-based assignment and agent selection (e.g., label agents by capabilities).
+    - testing-agent: implement a runner that executes provided tests, writes reports to `/workspace/tasks/<id>/reports`, and updates task status. (POC implemented: basic testing-agent)
+    - monitoring-agent: collect logs/metrics, run periodic health checks, and create follow-up tasks for regressions (POC scaffold implemented). Enhance with concurrent checks, richer check types, and notification hooks.
+    - notification service: integrate Slack/email/webhooks for important events (failed deploys, rollbacks, critical alerts). (Add retry and rate-limiting to avoid spam.)
+    - Implement role-based assignment and agent selection (e.g., label agents by capabilities).
+
+    Monitoring enhancements (short-term)
+    - Support additional check types: TCP, script, log pattern, and synthetic transactions.
+    - Add webhook/Slack notifier and basic retry/backoff for notifications.
+    - Add per-check concurrency and scheduling (avoid serial blocking checks).
+    - Add a monitoring `README` describing `monitoring/checks.yaml` format and examples.
+
+
 
 6. Deployment improvements
    - Multi-app hosting: keep `deploy/<task-id>/current` and support `deploy/<task-id>/revisions/*` (POC implemented).
@@ -69,5 +77,7 @@ These are recommended actions for the DevSys PoC and future hardening. Items mar
    - Add CI job to build images and run the PoC integration test.
    - Implement JUnit/XML reporting in testing-agent and expose manager API to fetch latest test report.
    - Implement basic test queue and parallel test runners for the testing-agent.
+   - Monitoring: finalize monitoring-agent features (POC scaffold added) — add webhook notifier, richer check types, non-blocking scheduling, and monitoring README.
+   - Start monitoring-agent and perform an initial run to validate checks and follow-up task creation behavior. (next immediate action)
 
 (End of TODO list)
