@@ -81,3 +81,17 @@ These are recommended actions for the DevSys PoC and future hardening. Items mar
    - Start monitoring-agent and perform an initial run to validate checks and follow-up task creation behavior. (next immediate action)
 
 (End of TODO list)
+▼
+Todo
+[✓] Define architecture & roles
+[✓] Design task-handoff format
+[✓] Create agent docker-compose
+[ ] Implement shared storage & queue
+[ ] Integrate spec-kit for specs
+[ ] Build coding agent image (opencode)
+[ ] Build testing agent & CI scripts
+[✓] Build deployment agent & pipeline
+[ ] Build monitoring & auto-repair agent
+[✓] Create sample blog project
+[ ] Run integration tests & validate
+[ ] Document workflows & handoffs
