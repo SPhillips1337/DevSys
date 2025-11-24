@@ -28,16 +28,18 @@ def read_meta(task_dir):
         return json.load(f)
 
 
-def run_tests(task_dir, spec):
+def run_tests(task_dir, spec, run_dir=None):
+    # run_dir: directory where the tests should be executed (defaults to task_dir)
     reports_dir = os.path.join(task_dir, 'reports')
     os.makedirs(reports_dir, exist_ok=True)
-    # Prefer an explicit run-tests.sh in task dir
-    test_script = os.path.join(task_dir, 'run-tests.sh')
+    target_dir = run_dir or task_dir
+    # Prefer an explicit run-tests.sh in the target dir
+    test_script = os.path.join(target_dir, 'run-tests.sh')
     # Or tests defined in spec: tests -> run
     spec_tests = spec.get('tests') if spec else None
     if os.path.exists(test_script) and os.access(test_script, os.X_OK):
         cmd = [test_script]
-    elif spec_tests and isinstance(spec_tests, list) and 'run' in spec_tests[0]:
+    elif spec_tests and isinstance(spec_tests, list) and isinstance(spec_tests[0], dict) and 'run' in spec_tests[0]:
         cmd = ['/bin/sh', '-c', spec_tests[0]['run']]
     else:
         # No tests to run
@@ -46,7 +48,7 @@ def run_tests(task_dir, spec):
     timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
     report_file = os.path.join(reports_dir, f'test-report-{timestamp}.txt')
     try:
-        proc = subprocess.run(cmd, cwd=task_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+        proc = subprocess.run(cmd, cwd=target_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         output = proc.stdout.decode('utf-8', errors='replace')
         with open(report_file, 'w') as f:
             f.write(output)
@@ -83,8 +85,13 @@ while True:
                         spec = yaml.safe_load(f) or {}
                 except Exception:
                     spec = {}
+            # Determine if tests should run in a related task dir
+            related = spec.get('related_task') if spec else None
+            run_dir = None
+            if related:
+                run_dir = os.path.join(TASKS_DIR, related)
             # Run tests if present
-            ok, info = run_tests(task_dir, spec)
+            ok, info = run_tests(task_dir, spec, run_dir=run_dir)
             if info and info != 'no_tests':
                 report_rel = os.path.relpath(info, TASKS_DIR)
             else:
