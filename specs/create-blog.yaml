@@ -1,0 +1,17 @@
+id: task-001
+title: Create blog website
+description: "Scaffold a simple static blog site (HTML) and deploy to the dev compose network."
+owner: manager
+kind: deployment
+priority: high
+inputs:
+  - type: template
+    name: simple-static
+outputs:
+  - path: /workspace/tasks/task-001/src
+acceptance:
+  - url: http://localhost:8081
+  - should_respond: 200
+tests:
+  - run: ./run-tests.sh
+deploy: true

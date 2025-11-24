@@ -1,0 +1,162 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "devsys-opencode-php-ssh",
+  "slug": "devsys-opencode-php-ssh",
+  "summary": "Minimal dev/sys project containing a PHP+SSH Docker setup and documentation for running opencode inside the container.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": "https://github.com/stephen/devsys-opencode-php-ssh",
+  "goals": [
+    "Extract PHP+SSH container config out of the n8n project",
+    "Make a standalone devsys directory that can be run and managed separately",
+    "Provide instructions to connect by SSH and manage opencode running inside the container"
+  ],
+  "primary_features": [
+    "Docker Compose manifest for PHP+SSH",
+    "Dockerfile for PHP image with OpenSSH and n8nuser account",
+    "README with opencode installation and management notes"
+  ],
+  "tech_stack": {
+    "orchestration": "Docker Compose",
+    "container_base_image": "php:8.2-apache",
+    "service_manager_in_container": "Supervisor (installed at runtime)",
+    "opencode": "opencode 1.0.107 (installed via upstream installer)"
+  },
+  "security_considerations": [
+    "Dockerfile contains a hardcoded user password (n8nuser:n8npass) — rotate before production",
+    "Temporary private key left on Docker host at /tmp/opencode_ssh_key — remove after copying to clients",
+    "SSH port 2222 is exposed on the host; ensure firewall rules or bind to localhost if not public",
+    "Running external installer with curl | bash is convenient but requires trust in upstream source"
+  ],
+  "development_state": {
+    "scaffold": "minimal",
+    "notes": "Files copied: docker-compose.yml, Dockerfile.php, README.md. start-services.sh and application data (n8n_data) are referenced but not included in this directory."
+  },
+  "development_plan": {
+    "currentPhase": 1,
+    "phases": [
+      {
+        "number": 1,
+        "name": "Extract and verify",
+        "description": "Copy minimal files out of the n8n repo and verify container builds",
+        "tasks": [
+          { "name": "Copy docker-compose.yml, Dockerfile.php, README.md", "status": "completed" },
+          { "name": "Confirm opencode can be installed inside container", "status": "completed" },
+          { "name": "Identify missing artifacts (start-services.sh, n8n_data)", "status": "in_progress" }
+        ]
+      },
+      {
+        "number": 2,
+        "name": "Make standalone",
+        "description": "Add required files and optional opencode service so devsys runs independently",
+        "tasks": [
+          { "name": "Add or embed start-services.sh into devsys", "status": "pending" },
+          { "name": "Add opencode service to docker-compose.yml (optional)", "status": "pending" }
+        ]
+      }
+    ]
+  },
+  "todo": [
+    { "id": "1", "title": "Copy start-services.sh into devsys or refactor Dockerfile to not require it", "status": "pending", "priority": "high" },
+    { "id": "2", "title": "Move required n8n_data/php content or create a smaller demo site", "status": "pending", "priority": "medium" },
+    { "id": "3", "title": "Optionally create a dedicated opencode Docker service", "status": "pending", "priority": "low" },
+    { "id": "4", "title": "Remove temporary private key from Docker host after you copy it", "status": "pending", "priority": "high" }
+  ],
+  "files_of_interest": [
+    "docker-compose.yml",
+    "Dockerfile.php",
+    "README.md",
+    "start-services.sh (referenced, not included)"
+  ],
+  "open_questions": [
+    "Do you want opencode bundled into its own container or kept inside the PHP container?",
+    "Should the hardcoded password be removed and replaced with key-only auth?"
+  ],
+  "contact": {
+    "maintainer": "stephen",
+    "location": "local host"
+  },
+  "how_to_run_locally": {
+    "summary": "Build and run the devsys compose stack",
+    "steps": [
+      "cd /home/stephen/devsys",
+      "Ensure start-services.sh is present in this directory (it is referenced by Dockerfile.php). If not, copy it from the original n8n folder or modify the Dockerfile.",
+      "docker compose up -d --build",
+      "Check container status with: docker ps --format '{{.ID}} {{.Names}} {{.Image}} {{.Ports}}'",
+      "SSH into the container: ssh -i <your_key> -p 2222 n8nuser@<HOST_IP>"
+    ],
+    "environment": {
+      "SSH_PORT": "2222",
+      "OPENCODE_PORT": "3001 (if running inside container via supervisor)"
+    }
+  },
+  "lastUpdated": "2025-11-24T14:38:00Z",
+  "api_endpoints": [
+    {
+      "endpoint": "/api/tasks",
+      "method": "POST",
+      "description": "Create a task from a user story"
+    }
+  ],
+  "external_services": {
+    "opencode_installer": "https://opencode.ai/install"
+  },
+  "required_env": [
+    "Docker & Docker Compose installed on host",
+    "Network access to fetch packages and opencode installer"
+  ],
+  "current_capabilities": [
+    "Build the PHP+SSH container from Dockerfile.php",
+    "SSH into container (key-based) and run opencode",
+    "Run opencode via Supervisor inside the running container"
+  ],
+  "next_steps": [
+    "Add start-services.sh into devsys or refactor Dockerfile",
+    "Decide whether to add opencode as a dedicated service in docker-compose",
+    "Remove temporary private key from Docker host once copied to clients"
+  ],
+  "architecture": {
+    "overview": "Single Docker Compose file with a PHP container exposing SSH; opencode runs inside the container under Supervisor in the current setup.",
+    "components": {
+      "php": {
+        "description": "PHP Apache image with OpenSSH server and n8nuser account",
+        "implementation": "Dockerfile.php",
+        "files": ["Dockerfile.php"],
+        "status": "ready (needs start-services.sh)"
+      },
+      "opencode": {
+        "description": "Installed at runtime into the PHP container and managed by Supervisor",
+        "implementation": "installed via https://opencode.ai/install",
+        "files": ["README.md"],
+        "status": "running (when container is up and Supervisor configured)"
+      }
+    }
+  },
+  "infrastructure": {
+    "type": "docker-compose",
+    "notes": "Compose references local volumes (./n8n_data) which may need adjusting for this standalone directory",
+    "files": ["docker-compose.yml"]
+  },
+  "status": "experimental",
+  "concept": "Separate the PHP+SSH+opencode setup from the main n8n project so it can be managed independently for development and testing.",
+  "current_goals": [
+    "Make devsys self-contained by adding missing files and optionally an opencode service",
+    "Harden SSH access and remove hardcoded passwords"
+  ],
+  "key_files": {
+    "compose": "docker-compose.yml",
+    "dockerfile_php": "Dockerfile.php",
+    "readme": "README.md"
+  },
+  "features": {
+    "completed": ["Compose and Dockerfile extracted","Opencode installation verified inside container"],
+    "demo_ready": [],
+    "future_enhancements": ["Add dedicated opencode service","Implement manager/testing/deployment/monitoring agents"]
+  },
+  "progress_percent": 18,
+  "progress_state": "in_progress",
+  "next_version_goals": [
+    "Scaffold PoC agent services and workspace",
+    "Integrate spec-kit for task validation"
+  ]
+}

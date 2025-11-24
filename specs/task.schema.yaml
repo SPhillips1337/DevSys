@@ -1,0 +1,14 @@
+# Minimal task schema for devsys PoC
+id: string
+title: string
+description: string
+owner: string
+priority: [low, medium, high]
+inputs:
+  - type: object
+outputs:
+  - path: string
+acceptance:
+  - type: object
+  - should_respond: number
+# This is a lightweight human-friendly schema; integrate spec-kit for full validation

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DevSys Task Spec",
+  "type": "object",
+  "required": ["id", "title", "owner", "kind"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "owner": { "type": "string" },
+    "kind": { "type": "string", "enum": ["coding", "testing", "deployment", "monitoring", "manager"] },
+    "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+    "inputs": { "type": "array", "items": { "type": "object" } },
+    "outputs": { "type": "array", "items": { "type": "object" } },
+    "acceptance": { "type": "array", "items": { "type": "object" } },
+    "tests": { "type": "array", "items": { "type": "object" } },
+    "deploy": { "type": "boolean" }
+  },
+  "additionalProperties": true
+}
