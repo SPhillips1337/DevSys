@@ -12,6 +12,8 @@ services:
       context: .
       dockerfile: Dockerfile.php
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       # Host port 8081 serves HTTP for deployed apps (change as needed)
       - "127.0.0.1:8081:80"

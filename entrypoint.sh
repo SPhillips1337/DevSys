@@ -21,6 +21,27 @@ else
   chown -R www-data:www-data /var/www/html || true
 fi
 
+# Set runtime user password or SSH keys if provided via environment
+if [ -n "${N8N_USER_PASSWORD:-}" ]; then
+  echo "Setting password for n8nuser from N8N_USER_PASSWORD"
+  echo "n8nuser:${N8N_USER_PASSWORD}" | chpasswd || true
+fi
+
+if [ -n "${N8N_USER_PUBKEY:-}" ]; then
+  echo "Adding provided public key to /home/n8nuser/.ssh/authorized_keys"
+  mkdir -p /home/n8nuser/.ssh
+  echo "${N8N_USER_PUBKEY}" >> /home/n8nuser/.ssh/authorized_keys
+  chown -R n8nuser:n8nuser /home/n8nuser/.ssh || true
+  chmod 700 /home/n8nuser/.ssh || true
+  chmod 600 /home/n8nuser/.ssh/authorized_keys || true
+fi
+
+# Optionally disable password auth if N8N_PASSWORD_AUTH is set to 'false'
+if [ "${N8N_PASSWORD_AUTH:-true}" = "false" ]; then
+  sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config || true
+  sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config || true
+fi
+
 # Start both Apache and SSH
 if [ -x "/start-services.sh" ]; then
   exec /start-services.sh

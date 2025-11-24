@@ -11,9 +11,8 @@ RUN mkdir -p /var/run/sshd && \
     sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
-# Create SSH user
-RUN useradd -m -s /bin/bash n8nuser && \
-    echo "n8nuser:n8npass" | chpasswd
+# Create SSH user (password will be set at runtime from environment variables)
+RUN useradd -m -s /bin/bash n8nuser || true
 
 # Expose SSH port
 EXPOSE 22
