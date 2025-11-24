@@ -8,10 +8,15 @@ from datetime import datetime
 
 WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
 MANAGER_URL = os.environ.get('MANAGER_URL', 'http://manager:8080')
+MANAGER_API_TOKEN = os.environ.get('MANAGER_API_TOKEN')
 DEPLOY_DIR = os.path.join(WORKSPACE, 'deploy')
 TASKS_DIR = os.path.join(WORKSPACE, 'tasks')
 
 os.makedirs(DEPLOY_DIR, exist_ok=True)
+
+HEADERS = {}
+if MANAGER_API_TOKEN:
+    HEADERS['Authorization'] = f"Bearer {MANAGER_API_TOKEN}"
 
 print('Deployment agent started. Deploy dir:', DEPLOY_DIR)
 
@@ -49,10 +54,11 @@ def create_followup_task(task_id, reason):
             'priority': 'high'
         }
     }
-    try:
-        requests.post(f"{MANAGER_URL}/api/tasks", json=payload, timeout=5)
-    except Exception as e:
-        print('Failed to create follow-up task', e)
+        try:
+                requests.post(f"{MANAGER_URL}/api/tasks", json=payload, timeout=5, headers=HEADERS)
+            except Exception as e:
+                print('Failed to create follow-up task', e)
+
 
 
 def check_acceptance(task_dir, spec):
@@ -152,10 +158,11 @@ while True:
             }
             write_deploy_record(task_dir, record)
             # Update task status to deployed
-            try:
-                requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'deployed'}, timeout=5)
-            except Exception as e:
-                print('Failed to update manager status', e)
+                try:
+                    requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'deployed'}, timeout=5, headers=HEADERS)
+                except Exception as e:
+                    print('Failed to update manager status', e)
+
             print('Deployed task', name, 'to', final_dir)
             # Perform acceptance check
             ok, info = check_acceptance(task_dir, spec)
@@ -164,16 +171,17 @@ while True:
             write_deploy_record(task_dir, record)
             if ok:
                 try:
-                    requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'verified'}, timeout=5)
+                    requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'verified'}, timeout=5, headers=HEADERS)
                 except Exception as e:
                     print('Failed to update manager status to verified', e)
             else:
                 try:
-                    requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'failed'}, timeout=5)
+                    requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'failed'}, timeout=5, headers=HEADERS)
                 except Exception as e:
                     print('Failed to update manager status to failed', e)
                 # Create follow-up task to fix deployment
                 create_followup_task(name, f"Acceptance checks failed: {info}")
+
     except Exception as e:
         print('Deployment worker error', e)
     time.sleep(5)

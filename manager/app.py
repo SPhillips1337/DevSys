@@ -11,6 +11,26 @@ app = Flask(__name__)
 WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
 TASKS_DIR = os.path.join(WORKSPACE, 'tasks')
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), 'task_schema.json')
+# Manager API token for simple auth (optional). If set, requests must provide this token.
+MANAGER_API_TOKEN = os.environ.get('MANAGER_API_TOKEN')
+from functools import wraps
+
+def auth_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not MANAGER_API_TOKEN:
+            return func(*args, **kwargs)
+        # Accept Authorization: Bearer <token> or X-Api-Token header
+        auth = request.headers.get('Authorization', '')
+        token = None
+        if auth.startswith('Bearer '):
+            token = auth.split(' ', 1)[1].strip()
+        if not token:
+            token = request.headers.get('X-Api-Token')
+        if token != MANAGER_API_TOKEN:
+            return jsonify({'error': 'unauthorized'}), 401
+        return func(*args, **kwargs)
+    return wrapper
 
 # Load task schema
 try:
@@ -25,6 +45,7 @@ def task_path(task_id):
     return os.path.join(TASKS_DIR, task_id)
 
 @app.route('/api/tasks', methods=['POST'])
+@auth_required
 def create_task():
     data = request.get_json() or {}
     task_id = data.get('id') or f"task-{uuid.uuid4().hex[:8]}"
@@ -74,6 +95,7 @@ def get_task(task_id):
         return jsonify(json.load(f))
 
 @app.route('/api/tasks/<task_id>/status', methods=['POST'])
+@auth_required
 def update_status(task_id):
     d = task_path(task_id)
     meta_file = os.path.join(d, 'meta.json')
@@ -93,6 +115,7 @@ def update_status(task_id):
 
 
 @app.route('/api/tasks/<task_id>/deploy', methods=['POST'])
+@auth_required
 def trigger_deploy(task_id):
     # Mark a task as ready for deploy (deployment-agent will pick it up)
     d = task_path(task_id)
@@ -119,6 +142,7 @@ def get_deploy_history(task_id):
 
 
 @app.route('/api/tasks/<task_id>/rollback', methods=['POST'])
+@auth_required
 def rollback_deploy(task_id):
     # Roll back a deployment for a given task to a specified revision timestamp or last revision
     payload = request.get_json() or {}

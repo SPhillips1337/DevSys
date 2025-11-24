@@ -6,9 +6,14 @@ import yaml
 
 WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
 MANAGER_URL = os.environ.get('MANAGER_URL', 'http://manager:8080')
+MANAGER_API_TOKEN = os.environ.get('MANAGER_API_TOKEN')
 TASKS_DIR = os.path.join(WORKSPACE, 'tasks')
 
 os.makedirs(TASKS_DIR, exist_ok=True)
+
+HEADERS = {}
+if MANAGER_API_TOKEN:
+    HEADERS['Authorization'] = f"Bearer {MANAGER_API_TOKEN}"
 
 print('Coding agent started, workspace:', WORKSPACE, 'manager:', MANAGER_URL)
 
@@ -33,7 +38,7 @@ while True:
                 continue
             print('Found new task', name)
             # mark in_progress
-            requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'in_progress'})
+            requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'in_progress'}, headers=HEADERS)
             # read spec
             spec_path = os.path.join(task_dir, 'spec.yaml')
             spec = {}
@@ -52,7 +57,7 @@ while True:
             with open(index_path, 'w') as f:
                 f.write(html)
             # mark completed
-            requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'completed'})
+            requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'completed'}, headers=HEADERS)
             print('Completed task', name)
     except Exception as e:
         print('Worker error', e)
