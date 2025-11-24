@@ -8,7 +8,7 @@ These are recommended actions for the DevSys PoC and future hardening. Items mar
    - Add an integration test that exercises the full flow: manager → coding-agent → testing-agent → deployment-agent → monitoring-agent.
 
 2. Security & access
-   - Add authentication/authorization to the manager API (deploy/rollback endpoints) and protect agent endpoints (token-based or mutual TLS).
+   - Add authentication/authorization to the manager API (deploy/rollback endpoints) and protect agent endpoints (token-based or mutual TLS). (POC implemented: token-based auth)
    - Remove hardcoded SSH passwords from `Dockerfile.php` and migrate to key-only auth or Docker secrets. (TODO)
    - Store secrets in Docker secrets / environment management and avoid committing keys to the repo.
    - Add audit logging for manager actions (who triggered deploy/rollback).
@@ -24,7 +24,7 @@ These are recommended actions for the DevSys PoC and future hardening. Items mar
    - Ensure agents checkpoint progress and support idempotent re-runs.
 
 5. Agents & workflows
-   - testing-agent: implement a runner that executes provided tests, writes reports to `/workspace/tasks/<id>/reports`, and updates task status. (TODO)
+   - testing-agent: implement a runner that executes provided tests, writes reports to `/workspace/tasks/<id>/reports`, and updates task status. (POC implemented: basic testing-agent)
    - monitoring-agent: collect logs/metrics, run periodic health checks, and create follow-up tasks for regressions (POC idea implemented in deployment-agent creation of follow-ups).
    - notification service: integrate Slack/email/webhooks for important events (failed deploys, rollbacks, critical alerts).
    - Implement role-based assignment and agent selection (e.g., label agents by capabilities).
@@ -48,6 +48,9 @@ These are recommended actions for the DevSys PoC and future hardening. Items mar
    - Add unit and integration tests for manager APIs and agent behaviors.
    - Add end-to-end smoke tests to the CI pipeline that deploy a sample app and verify acceptance.
    - Add chaos tests for agent failures and network partitions.
+   - Add JUnit/XML test report output for the testing-agent so CI systems can parse results.
+   - Add a manager API endpoint to fetch the latest test report or a test summary for a task.
+   - Implement a basic test queue and parallel test runners for the testing-agent to allow concurrent execution and throttling.
 
 10. Documentation & runbook
    - Document agent APIs, task spec format (`specs/`), and operational runbook for running and troubleshooting the PoC. (TODO)
@@ -60,9 +63,11 @@ These are recommended actions for the DevSys PoC and future hardening. Items mar
 
 12. Short-term immediate tasks (next sprint)
    - Integrate `spec-kit` schema validation into the manager (partial work done; finish integration).
-   - Implement `testing-agent` skeleton and wire it into the pipeline.
-   - Add manager API authentication and RBAC for deploy/rollback.
+   - Implement `testing-agent` skeleton and wire it into the pipeline. (POC done; extend with JUnit/XML and parallelism)
+   - Add manager API authentication and RBAC for deploy/rollback. (POC: token auth implemented)
    - Add notifications for failed deploys and created follow-up tasks.
    - Add CI job to build images and run the PoC integration test.
+   - Implement JUnit/XML reporting in testing-agent and expose manager API to fetch latest test report.
+   - Implement basic test queue and parallel test runners for the testing-agent.
 
 (End of TODO list)
