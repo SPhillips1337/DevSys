@@ -63,9 +63,3 @@ Dates are in UTC. This file summarizes the work performed during the DevSys PoC 
 
 Notes and next steps
 - Several immediate next items were recorded in `TODO.md`: spec-kit integration, testing-agent enhancements (JUnit/XML, report API, concurrency), manager auth and RBAC, monitoring agent, CI integration, and persistence/queueing improvements.
-- Sensitive items: ensure `.env` is NOT committed; rotate any passwords and remove temporary keys from the host.
-
-If you'd like, I can now:
-- Push these commits to a remote repository you provide.
-- Create a release tag (v0.2.0) and attach this changelog.
-- Expand any changelog entries to include commit hashes or more precise timestamps per change.
