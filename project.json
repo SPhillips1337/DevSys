@@ -2,19 +2,19 @@
   "schemaVersion": "1.0.0",
   "name": "devsys-opencode-php-ssh",
   "slug": "devsys-opencode-php-ssh",
-  "summary": "Developer-in-a-box PoC: PHP+SSH container with multi-agent PoC (manager, coding, deployment) to accept user stories, run opencode, deploy and verify artifacts.",
-  "version": "0.2.0",
+  "summary": "Developer-in-a-box PoC: multi-agent environment (manager, coding, testing, deployment, monitoring) that accepts user stories, runs opencode-like scaffolding, tests, deploys, and verifies artifacts.",
+  "version": "0.2.1",
   "license": "MIT",
   "repository": "https://github.com/stephen/devsys-opencode-php-ssh",
   "goals": [
     "Provide a standalone devsys environment for agent-driven development workflows",
-    "Demonstrate manager → coding → deployment automated flow with task handoffs",
-    "Offer a reproducible PoC for autonomous task execution with acceptance checks"
+    "Demonstrate manager → coding → testing → deployment → monitoring automated flow with task handoffs",
+    "Offer a reproducible PoC for autonomous task execution with acceptance checks and test reporting"
   ],
   "primary_features": [
     "Docker Compose manifest for agent services and PHP deployment target",
-    "Manager HTTP API for task creation and lifecycle management",
-    "Coding agent that runs opencode-like scaffolding, and a deployment agent that deploys and verifies artifacts"
+    "Manager HTTP API for task creation and lifecycle management (with optional token auth)",
+    "Coding, Testing, Deployment and Monitoring agents to run the full pipeline"
   ],
   "tech_stack": {
     "orchestration": "Docker Compose",
@@ -26,165 +26,70 @@
     "Hardcoded credentials removed from Dockerfile; runtime .env provides N8N_USER_PASSWORD and N8N_USER_PUBKEY — do not commit .env",
     "Temporary private key earlier referenced should be removed from host after copying to clients",
     "SSH host port remapped to 2223 for this PoC; ensure firewall rules and restrict exposure",
-    "Running external installers (curl | bash) requires trust in upstream sources"
+    "Manager API may be protected with MANAGER_API_TOKEN — use strong secrets and consider Docker secrets for production"
   ],
   "development_state": {
     "scaffold": "PoC",
-    "notes": "Manager, coding-agent and deployment-agent implemented. start-services.sh included. Some files and features remain TODO (testing-agent, monitoring-agent, persistent DB)."
+    "notes": "Manager, coding-agent, testing-agent, deployment-agent and monitoring-agent implemented. Some features remain: spec-kit integration, persistent DB, notification hooks, RBAC."
   },
   "development_plan": {
     "currentPhase": 2,
     "phases": [
-      {
-        "number": 1,
-        "name": "Extract and verify",
-        "description": "Copy minimal files out of the n8n repo and verify container builds",
-        "tasks": [
-          { "name": "Copy docker-compose.yml, Dockerfile.php, README.md", "status": "completed" },
-          { "name": "Confirm opencode can be installed inside container", "status": "completed" },
-          { "name": "Identify missing artifacts (start-services.sh, n8n_data)", "status": "completed" }
-        ]
-      },
-      {
-        "number": 2,
-        "name": "PoC agents",
-        "description": "Add manager, coding-agent, deployment-agent and basic task flow",
-        "tasks": [
-          { "name": "Scaffold manager and coding-agent", "status": "completed" },
-          { "name": "Add deployment-agent with verification logic", "status": "completed" },
-          { "name": "Add spec validation and sample task", "status": "completed" }
-        ]
-      },
-      {
-        "number": 3,
-        "name": "Hardening & features",
-        "description": "Add testing/monitoring agents, persistent stores, auth and CI",
-        "tasks": [
-          { "name": "Integrate spec-kit fully", "status": "pending" },
-          { "name": "Add testing-agent and monitoring-agent", "status": "pending" }
-        ]
-      }
+      { "number": 1, "name": "Extract and verify", "description": "Copy minimal files out of the n8n repo and verify container builds" },
+      { "number": 2, "name": "PoC agents", "description": "Add manager, coding-agent, deployment-agent, testing-agent and monitoring-agent and basic task flow" },
+      { "number": 3, "name": "Hardening & features", "description": "Add spec-kit, persistent stores, RBAC, notifications and CI" }
     ]
   },
   "todo": [
     { "id": "1", "title": "Integrate spec-kit validators into manager", "status": "pending", "priority": "high" },
-    { "id": "2", "title": "Implement testing-agent and CI checks", "status": "pending", "priority": "high" },
-    { "id": "3", "title": "Add manager API auth and RBAC", "status": "pending", "priority": "high" },
-    { "id": "4", "title": "Consider Postgres + Redis for task store and queues", "status": "pending", "priority": "medium" }
+    { "id": "2", "title": "Add notification hooks (Slack/webhook/email)", "status": "pending", "priority": "medium" },
+    { "id": "3", "title": "Migrate task store to Postgres and add Redis queues", "status": "pending", "priority": "medium" },
+    { "id": "4", "title": "Add RBAC and per-agent tokens", "status": "pending", "priority": "medium" }
   ],
-  "files_of_interest": [
-    "docker-compose.yml",
-    "Dockerfile.php",
-    "README.md",
-    "manager/app.py",
-    "deployment-agent/worker.py",
-    "coding-agent/worker.py"
-  ],
+  "files_of_interest": ["docker-compose.yml","Dockerfile.php","README.md","manager/app.py","deployment-agent/worker.py","testing-agent/worker.py","monitoring-agent/worker.py"],
   "open_questions": [
     "Do you want opencode bundled into its own container or kept inside the coding-agent?",
     "What level of autonomy should monitoring/auto-repair have? (auto-fix vs create task)"
   ],
-  "contact": {
-    "maintainer": "stephen",
-    "location": "local host"
-  },
+  "contact": { "maintainer": "stephen", "location": "local host" },
   "how_to_run_locally": {
     "summary": "Build and run the devsys compose stack and use the manager API to create tasks",
     "steps": [
       "cd /home/stephen/devsys",
-      "Copy .env.example to .env and set secrets (N8N_USER_PASSWORD or N8N_USER_PUBKEY) — do not commit .env",
+      "Copy .env.example to .env and set secrets (N8N_USER_PASSWORD, MANAGER_API_TOKEN) — do not commit .env",
       "docker compose up -d --build",
       "Check manager API: http://localhost:8080/api/tasks",
       "Create a task (example): curl -X POST http://localhost:8080/api/tasks -H 'Content-Type: application/json' -d '{\"id\":\"task-001\",\"title\":\"Create blog\",\"owner\":\"manager\",\"kind\":\"deployment\",\"deploy\":true}'",
       "Trigger deploy: POST /api/tasks/<id>/deploy",
-      "Dev site served at http://localhost:8081 (PHP container)"
+      "Dev site served at http://localhost:8081 (PHP container)",
+      "Monitor health via monitoring-agent: checks defined in monitoring/checks.yaml"
     ],
-    "environment": {
-      "MANAGER_PORT": "8080",
-      "DEPLOYMENT_HTTP_PORT": "8081",
-      "SSH_PORT": "2223"
-    }
+    "environment": { "MANAGER_PORT": "8080", "DEPLOYMENT_HTTP_PORT": "8081", "SSH_PORT": "2223" }
   },
-  "lastUpdated": "2025-11-24T15:45:00Z",
+  "lastUpdated": "2025-11-24T17:40:00Z",
   "api_endpoints": [
-    {
-      "endpoint": "/api/tasks",
-      "method": "POST",
-      "description": "Create a task from a user story"
-    },
-    {
-      "endpoint": "/api/tasks/<id>/deploy",
-      "method": "POST",
-      "description": "Mark task ready_for_deploy so deployment-agent will deploy it"
-    },
-    {
-      "endpoint": "/api/tasks/<id>/rollback",
-      "method": "POST",
-      "description": "Rollback a task deployment to a previous revision"
-    }
+    { "endpoint": "/api/tasks", "method": "POST", "description": "Create a task from a user story" },
+    { "endpoint": "/api/tasks/<id>/deploy", "method": "POST", "description": "Mark task ready_for_deploy so deployment-agent will deploy it" },
+    { "endpoint": "/api/tasks/<id>/rollback", "method": "POST", "description": "Rollback a task deployment to a previous revision" },
+    { "endpoint": "/api/tasks/<id>/tests/latest", "method": "GET", "description": "Fetch latest test report and summary for a task" }
   ],
-  "external_services": {
-    "opencode_installer": "https://opencode.ai/install"
-  },
-  "required_env": [
-    "Docker & Docker Compose installed on host",
-    "Create a local .env from .env.example to set runtime secrets"
-  ],
-  "current_capabilities": [
-    "Manage tasks via manager API",
-    "Scaffold simple sites via coding-agent",
-    "Deploy artifacts and verify via deployment-agent",
-    "Record deployment revisions and perform rollbacks via manager API"
-  ],
-  "next_steps": [
-    "Integrate spec-kit and CI",
-    "Add testing and monitoring agents",
-    "Harden manager API with auth and RBAC"
-  ],
-  "architecture": {
-    "overview": "Docker Compose with agent services (manager, coding-agent, deployment-agent) and a PHP container as local deployment target.",
+  "external_services": { "opencode_installer": "https://opencode.ai/install" },
+  "required_env": ["Docker & Docker Compose installed on host","Create a local .env from .env.example to set runtime secrets"],
+  "current_capabilities": ["Manage tasks via manager API","Scaffold simple sites via coding-agent","Run tests via testing-agent with JUnit/XML reports","Deploy artifacts and verify via deployment-agent","Monitor services and create follow-up tasks via monitoring-agent"],
+  "next_steps": ["Integrate spec-kit and CI","Add notification hooks and RBAC","Migrate task store to Postgres/Redis"],
+  "architecture": { "overview": "Docker Compose with agent services (manager, coding-agent, testing-agent, deployment-agent, monitoring-agent) and a PHP container as local deployment target.",
     "components": {
-      "manager": {
-        "description": "Task manager and API",
-        "implementation": "manager/app.py",
-        "files": ["manager/app.py", "manager/task_schema.json"],
-        "status": "ready"
-      },
-      "coding-agent": {
-        "description": "Scaffolds code/artifacts from task specs (opencode placeholder)",
-        "implementation": "coding-agent/worker.py",
-        "files": ["coding-agent/worker.py"],
-        "status": "ready"
-      },
-      "deployment-agent": {
-        "description": "Deploys task artifacts to ./workspace/deploy/<task-id>/current and verifies acceptance",
-        "implementation": "deployment-agent/worker.py",
-        "files": ["deployment-agent/worker.py"],
-        "status": "ready"
-      },
-      "php": {
-        "description": "PHP Apache container used as a local deployment target",
-        "implementation": "Dockerfile.php",
-        "files": ["Dockerfile.php", "entrypoint.sh"],
-        "status": "ready"
-      }
+      "manager": { "description": "Task manager and API", "implementation": "manager/app.py", "files": ["manager/app.py","manager/task_schema.json"], "status": "ready" },
+      "coding-agent": { "description": "Scaffolds code/artifacts from task specs", "implementation": "coding-agent/worker.py", "files": ["coding-agent/worker.py"], "status": "ready" },
+      "testing-agent": { "description": "Runs tests and produces JUnit/XML reports", "implementation": "testing-agent/worker.py", "files": ["testing-agent/worker.py"], "status": "ready" },
+      "deployment-agent": { "description": "Deploys task artifacts and verifies acceptance", "implementation": "deployment-agent/worker.py", "files": ["deployment-agent/worker.py"], "status": "ready" },
+      "monitoring-agent": { "description": "Performs health checks and creates follow-up tasks on failures", "implementation": "monitoring-agent/worker.py", "files": ["monitoring-agent/worker.py","monitoring/checks.yaml"], "status": "ready" },
+      "php": { "description": "PHP Apache container used as a local deployment target", "implementation": "Dockerfile.php", "files": ["Dockerfile.php","entrypoint.sh"], "status": "ready" }
     }
   },
-  "infrastructure": {
-    "type": "docker-compose",
-    "notes": "Compose references ./workspace for shared artifacts and ./workspace/www for served content",
-    "files": ["docker-compose.yml"]
-  },
+  "infrastructure": { "type": "docker-compose", "notes": "Compose references ./workspace for shared artifacts and ./workspace/www for served content", "files": ["docker-compose.yml"] },
   "status": "poс",
   "concept": "Agent-driven developer-in-a-box for rapid prototyping and automated task handoffs",
-  "current_goals": [
-    "Finish spec-kit integration",
-    "Add testing and monitoring agents",
-    "Harden API and secrets management"
-  ],
-  "key_files": {
-    "compose": "docker-compose.yml",
-    "dockerfile_php": "Dockerfile.php",
-    "readme": "README.md"
-  }
+  "current_goals": ["Finish spec-kit integration","Add notification hooks","Harden API and secrets management"],
+  "key_files": { "compose": "docker-compose.yml", "dockerfile_php": "Dockerfile.php", "readme": "README.md" }
 }

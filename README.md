@@ -35,7 +35,11 @@ This project is licensed under the MIT License — see `LICENSE` for details.
 
 Next steps
 - Integrate `spec-kit` for richer validation of task specs.
-- Add `testing-agent` and `monitoring-agent` to complete the pipeline.
-- Harden manager API with authentication and RBAC before exposing beyond localhost.
+- Add notification integrations (Slack/webhook/email) and RBAC for manager endpoints.
+- Migrate to a persistent task store (Postgres) with Redis for queues as we scale up.
 
-If you want me to continue, tell me which next step to implement (e.g., add testing-agent skeleton, integrate spec-kit, or add manager auth).
+Notes on current status (PoC)
+- Implemented services: `manager`, `coding-agent`, `testing-agent` (JUnit/XML reports), `deployment-agent`, `monitoring-agent`.
+- Manager supports optional token-based auth via `MANAGER_API_TOKEN` and exposes a test report endpoint: `GET /api/tasks/<id>/tests/latest`.
+
+If you want me to continue, tell me which next step to implement (e.g., integrate spec-kit, add notification hooks, or migrate the task store).
