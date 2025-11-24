@@ -50,17 +50,22 @@ def run_tests(task_dir, spec, run_dir=None):
     try:
         proc = subprocess.run(cmd, cwd=target_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         output = proc.stdout.decode('utf-8', errors='replace')
-        with open(report_file, 'w') as f:
-            f.write(output)
         success = proc.returncode == 0
+        # Always write a summary header followed by the raw output so reports are informative
+        with open(report_file, 'w') as f:
+            f.write(f"RESULT: {'PASS' if success else 'FAIL'}\n")
+            f.write(f"EXIT_CODE: {proc.returncode}\n")
+            f.write(f"TIMESTAMP: {datetime.utcnow().isoformat()}Z\n")
+            f.write("--- OUTPUT ---\n")
+            f.write(output or "(no output)\n")
         return success, report_file
     except subprocess.TimeoutExpired as e:
         with open(report_file, 'w') as f:
-            f.write(f'Timeout: {e}\n')
+            f.write(f"RESULT: FAIL\nEXIT_CODE: TIMEOUT\nTIMESTAMP: {datetime.utcnow().isoformat()}Z\n--- OUTPUT ---\nTimeout: {e}\n")
         return False, report_file
     except Exception as e:
         with open(report_file, 'w') as f:
-            f.write(f'Error running tests: {e}\n')
+            f.write(f"RESULT: ERROR\nEXIT_CODE: ERROR\nTIMESTAMP: {datetime.utcnow().isoformat()}Z\n--- OUTPUT ---\nError running tests: {e}\n")
         return False, report_file
 
 
