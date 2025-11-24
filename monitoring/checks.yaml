@@ -1,0 +1,6 @@
+- name: php-http
+  type: http
+  url: http://php:80/
+  status: 200
+  interval: 30
+  threshold: 2

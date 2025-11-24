@@ -48,6 +48,21 @@ services:
       - MANAGER_URL=http://manager:8080
       - WORKSPACE=/workspace
 
+  monitoring-agent:
+    build: ./monitoring-agent
+    container_name: devsys_monitoring_agent
+    depends_on:
+      - manager
+    volumes:
+      - ./workspace:/workspace
+      - ./monitoring:/monitoring:ro
+    env_file:
+      - .env
+    environment:
+      - MANAGER_URL=http://manager:8080
+      - WORKSPACE=/workspace
+      - CHECKS_FILE=/monitoring/checks.yaml
+
   php:
     build:
       context: .
