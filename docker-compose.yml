@@ -1,30 +1,6 @@
-# docker-compose.yml (self-contained for devsys)
-# version 3.1 works with Docker Swarm / Compose‑file‑v3
-#version: '3.1'
+version: '3.8'
 
 services:
-  # n8n service removed for PoC; original n8n config was here
-  # (if you need it again, it can be restored from project history)
-
-  # ----------  PHP web‑server repurposed as local deployment target ----------
-  php:
-    build:
-      context: .
-      dockerfile: Dockerfile.php
-    restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      # Host port 8081 serves HTTP for deployed apps (change as needed)
-      - "127.0.0.1:8081:80"
-      # SSH kept for admin access inside the container
-      - "127.0.0.1:2223:22"
-    volumes:
-      # Mount a deploy folder that agents will write into; container will symlink the current app into /var/www/html
-      - ./workspace/deploy:/var/www/deploy:rw
-      # Optional static content directory (fallback) served from workspace so agents can update it
-      - ./workspace/www:/var/www/www:rw
-
   manager:
     build: ./manager
     container_name: devsys_manager
@@ -45,6 +21,7 @@ services:
     environment:
       - MANAGER_URL=http://manager:8080
       - WORKSPACE=/workspace
+      - MANAGER_API_TOKEN=${MANAGER_API_TOKEN}
 
   deployment-agent:
     build: ./deployment-agent
@@ -56,3 +33,31 @@ services:
     environment:
       - MANAGER_URL=http://manager:8080
       - WORKSPACE=/workspace
+      - MANAGER_API_TOKEN=${MANAGER_API_TOKEN}
+
+  testing-agent:
+    build: ./testing-agent
+    container_name: devsys_testing_agent
+    depends_on:
+      - manager
+    volumes:
+      - ./workspace:/workspace
+    env_file:
+      - .env
+    environment:
+      - MANAGER_URL=http://manager:8080
+      - WORKSPACE=/workspace
+
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8081:80"
+      - "127.0.0.1:2223:22"
+    volumes:
+      - ./workspace/deploy:/var/www/deploy:rw
+      - ./workspace/www:/var/www/www:rw
