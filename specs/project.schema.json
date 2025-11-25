@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.org/project-json-schema/v1.json",
+  "title": "Project JSON Schema",
+  "description": "Schema for machine-friendly project manifests used to hand off work to LLMs and developers.",
+  "type": "object",
+  "required": ["schemaVersion", "name", "slug", "summary", "version"],
+  "properties": {
+    "schemaVersion": { "type": "string", "description": "Schema semver version" },
+    "name": { "type": "string" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+    "summary": { "type": "string" },
+    "version": { "type": "string" },
+    "license": { "type": "string" },
+    "repository": { "type": "string", "format": "uri", "description": "Canonical code repository URL" },
+    "goals": { "type": "array", "items": { "type": "string" } },
+    "primary_features": { "type": "array", "items": { "type": "string" } },
+    "secondary_features": { "type": "array", "items": { "type": "string" } },
+    "tech_stack": { "type": "object", "additionalProperties": { "type": "string" } },
+    "comfyui_integration": { "type": "object", "additionalProperties": true },
+    "admin_settings": { "type": "object", "additionalProperties": true },
+    "security_considerations": { "type": "array", "items": { "type": "string" } },
+    "development_state": {
+      "type": "object",
+      "properties": {
+        "scaffold": { "type": "string" },
+        "reviewed_examples": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" }
+      }
+    },
+    "development_plan": {
+      "type": "object",
+      "properties": {
+        "currentPhase": { "type": "integer" },
+        "phases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "number": { "type": "integer" },
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "status": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "todo": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] },
+          "priority": { "type": "string" }
+        }
+      }
+    },
+    "files_of_interest": { "type": "array", "items": { "type": "string" } },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "contact": { "type": "object", "additionalProperties": { "type": "string" } },
+    "how_to_run_locally": { "type": "object", "additionalProperties": true },
+    "lastUpdated": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp of last update" },
+    "api_endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "endpoint": { "type": "string" },
+          "method": { "type": "string" },
+          "description": { "type": "string" }
+        },
+        "required": ["endpoint"]
+      }
+    },
+    "external_services": { "type": "object", "additionalProperties": { "type": "string" } },
+    "required_env": { "type": "array", "items": { "type": "string" } },
+    "current_capabilities": { "type": "array", "items": { "type": "string" } },
+    "next_steps": { "type": "array", "items": { "type": "string" } },
+    "architecture": {
+      "type": "object",
+      "properties": {
+        "overview": { "type": "string" },
+        "components": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "description": { "type": "string" },
+              "implementation": { "type": "string" },
+              "files": { "type": "array", "items": { "type": "string" } },
+              "status": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "infrastructure": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "notes": { "type": "string" },
+        "files": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "status": { "type": "string" },
+    "concept": { "type": "string" },
+    "current_goals": { "type": "array", "items": { "type": "string" } },
+    "key_files": { "type": "object", "additionalProperties": { "type": "string" } },
+    "rarity_system": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "chance": { "type": "number", "minimum": 0, "maximum": 100 },
+          "colors": { "oneOf": [ { "type": "string" }, { "type": "array", "items": { "type": "string" } } ] },
+          "traits": { "oneOf": [ { "type": "string" }, { "type": "array", "items": { "type": "string" } } ] }
+        },
+        "required": ["chance"]
+      }
+    },
+    "generation_modes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "description": { "type": "string" },
+          "features": { "type": "array", "items": { "type": "string" } },
+          "time": { "oneOf": [ { "type": "string" }, { "type": "number" } ] }
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "completed": { "type": "array", "items": { "type": "string" } },
+        "demo_ready": { "type": "array", "items": { "type": "string" } },
+        "future_enhancements": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "demo_stats": {
+      "type": "object",
+      "properties": {
+        "total_generated": { "type": "integer" },
+        "generation_success_rate": { "oneOf": [ { "type": "number" }, { "type": "string" } ] },
+        "average_generation_time": { "oneOf": [ { "type": "number" }, { "type": "string" } ] },
+        "rarity_breakdown": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "progress_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+    "progress_state": { "type": "string" },
+    "next_version_goals": { "oneOf": [ { "type": "string" }, { "type": "array", "items": { "type": "string" } } ] }
+  }
+}

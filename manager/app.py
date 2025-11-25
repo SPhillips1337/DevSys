@@ -11,6 +11,7 @@ app = Flask(__name__)
 WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
 TASKS_DIR = os.path.join(WORKSPACE, 'tasks')
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), 'task_schema.json')
+PROJECT_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), '..', 'specs', 'project.schema.json')
 # Manager API token for simple auth (optional). If set, requests must provide this token.
 MANAGER_API_TOKEN = os.environ.get('MANAGER_API_TOKEN')
 from functools import wraps
@@ -32,12 +33,16 @@ def auth_required(func):
         return func(*args, **kwargs)
     return wrapper
 
-# Load task schema
-try:
-    with open(SCHEMA_PATH) as f:
-        TASK_SCHEMA = json.load(f)
-except Exception:
-    TASK_SCHEMA = None
+# Load schemas
+def _load_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+TASK_SCHEMA = _load_json(SCHEMA_PATH)
+PROJECT_SCHEMA = _load_json(PROJECT_SCHEMA_PATH)
 
 os.makedirs(TASKS_DIR, exist_ok=True)
 
@@ -52,7 +57,32 @@ def create_task():
     title = data.get('title', 'untitled')
     spec = data.get('spec') or data
 
-    # Validate spec if schema available
+    # If the spec looks like a full project manifest and a project schema exists, validate and convert it
+    is_project_manifest = False
+    if PROJECT_SCHEMA and any(k in spec for k in ('schemaVersion', 'name', 'slug')):
+        try:
+            jsonschema.validate(instance=spec, schema=PROJECT_SCHEMA)
+            is_project_manifest = True
+        except jsonschema.ValidationError as e:
+            return jsonify({'error': 'project manifest validation failed', 'message': str(e)}), 400
+
+    if is_project_manifest:
+        proj = spec
+        # Prefer slug from project manifest as task id if available
+        if proj.get('slug'):
+            task_id = proj.get('slug')
+        # Convert project manifest to a task spec for deployment by default
+        spec = {
+            'id': task_id,
+            'title': proj.get('name'),
+            'description': proj.get('summary'),
+            'owner': (proj.get('contact') or {}).get('maintainer', 'manager'),
+            'kind': 'deployment',
+            'deploy': True,
+            'project': proj
+        }
+
+    # Validate spec against the task schema if available
     if TASK_SCHEMA:
         try:
             jsonschema.validate(instance=spec, schema=TASK_SCHEMA)

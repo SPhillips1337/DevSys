@@ -30,10 +30,16 @@ services:
       - manager
     volumes:
       - ./workspace:/workspace
+      # Example: mount SSH private key from host secrets into the container
+      # - ./secrets/external_deploy_key:/run/secrets/external_deploy_key:ro
+    env_file:
+      - .env
     environment:
       - MANAGER_URL=http://manager:8080
       - WORKSPACE=/workspace
       - MANAGER_API_TOKEN=${MANAGER_API_TOKEN}
+      - EXTERNAL_DEPLOY_SSH_KEY=/run/secrets/external_deploy_key
+      - EXTERNAL_DEPLOY_KNOWN_HOSTS=/run/secrets/external_deploy_known_hosts
 
   testing-agent:
     build: ./testing-agent
@@ -42,11 +48,15 @@ services:
       - manager
     volumes:
       - ./workspace:/workspace
+      # Example: mount SSH private key for remote test host
+      # - ./secrets/remote_test_key:/run/secrets/remote_test_key:ro
     env_file:
       - .env
     environment:
       - MANAGER_URL=http://manager:8080
       - WORKSPACE=/workspace
+      - REMOTE_TEST_SSH_KEY=/run/secrets/remote_test_key
+      - REMOTE_TEST_KNOWN_HOSTS=/run/secrets/remote_known_hosts
 
   monitoring-agent:
     build: ./monitoring-agent

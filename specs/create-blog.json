@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "Sample Blog",
+  "slug": "sample-blog",
+  "summary": "A minimal sample blog site for the DevSys PoC",
+  "version": "0.1.0",
+  "repository": "https://example.com/sample-blog.git",
+  "goals": ["Create a static blog site for PoC"],
+  "primary_features": ["Static site scaffold", "Deploy to PHP container"],
+  "contact": { "maintainer": "stephen" },
+  "lastUpdated": "2025-11-24T00:00:00Z"
+}

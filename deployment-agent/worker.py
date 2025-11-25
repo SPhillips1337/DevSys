@@ -1,10 +1,18 @@
 import os
+import sys
 import time
 import json
 import shutil
 import requests
 import yaml
 from datetime import datetime
+
+# allow importing utils from repository root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+try:
+    from utils import runner as runner_utils
+except Exception:
+    runner_utils = None
 
 WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
 MANAGER_URL = os.environ.get('MANAGER_URL', 'http://manager:8080')
@@ -127,35 +135,88 @@ while True:
                 shutil.move(final_dir, archived)
             # Atomically move new current into place
             os.rename(current_dir, final_dir)
-            # Also copy deployed files to the workspace www (fallback served dir)
-            try:
-                www_root = os.path.join(WORKSPACE, 'www')
-                if os.path.exists(www_root):
-                    # clear www root
-                    for entry in os.listdir(www_root):
-                        full = os.path.join(www_root, entry)
-                        if os.path.isdir(full):
-                            shutil.rmtree(full)
+            # Decide runner and optionally copy deployed files to a remote host or local www (fallback served dir)
+            runner = 'local'
+            if runner_utils:
+                try:
+                    runner = runner_utils.select_runner('deploy')
+                except Exception:
+                    runner = 'local'
+
+            remote_deploy_path = None
+            if runner == 'remote-ssh':
+                host = os.environ.get('EXTERNAL_DEPLOY_HOST') or os.environ.get('REMOTE_TEST_HOST')
+                user = os.environ.get('EXTERNAL_DEPLOY_USER') or os.environ.get('REMOTE_TEST_USER')
+                port = os.environ.get('EXTERNAL_DEPLOY_SSH_PORT') or os.environ.get('REMOTE_TEST_SSH_PORT')
+                key = os.environ.get('EXTERNAL_DEPLOY_SSH_KEY') or os.environ.get('REMOTE_TEST_SSH_KEY')
+                remote_base = os.environ.get('EXTERNAL_DEPLOY_REMOTE_PATH', '/tmp/devsys/deploy')
+                remote_path = f"{remote_base}/{name}"
+                try:
+                    if not host or not user:
+                        raise RuntimeError('remote deploy host/user not configured')
+                    ok = False
+                    known_hosts = os.environ.get('EXTERNAL_DEPLOY_KNOWN_HOSTS')
+                    if runner_utils:
+                        ok = runner_utils.remote_copy(final_dir, remote_path, host, user, port=port, key_path=key, known_hosts=known_hosts)
+                    if ok:
+                        remote_deploy_path = f"{user}@{host}:{remote_path}"
+                        print('Deployed task', name, 'to remote', remote_deploy_path)
+                        # Optionally run docker compose on remote host if requested
+                        run_compose = os.environ.get('EXTERNAL_DEPLOY_RUN_COMPOSE', '').lower() == 'true'
+                        if run_compose:
+                            try:
+                                compose_cmd = f"docker compose up -d --build"
+                                ret, out = runner_utils.remote_run(compose_cmd, host, user, port=port, key_path=key, known_hosts=known_hosts, cwd=remote_path, timeout=600)
+                                print('Remote compose result:', ret)
+                                remote_compose_result = {'rc': ret, 'output': out}
+                            except Exception as e:
+                                print('Remote compose failed', e)
+                                remote_compose_result = {'error': str(e)}
                         else:
-                            os.remove(full)
-                else:
-                    os.makedirs(www_root, exist_ok=True)
-                # copy files
-                for item in os.listdir(final_dir):
-                    s = os.path.join(final_dir, item)
-                    d = os.path.join(www_root, item)
-                    if os.path.isdir(s):
-                        shutil.copytree(s, d)
+                            remote_compose_result = None
                     else:
-                        shutil.copy2(s, d)
-            except Exception as e:
-                print('Failed to copy to www root', e)
+                        print('Remote copy failed, falling back to local www copy')
+                        runner = 'local'
+                except Exception as e:
+                    print('Remote deploy error', e)
+                    runner = 'local'
+
+            if runner != 'remote-ssh':
+                try:
+                    www_root = os.path.join(WORKSPACE, 'www')
+                    if os.path.exists(www_root):
+                        # clear www root
+                        for entry in os.listdir(www_root):
+                            full = os.path.join(www_root, entry)
+                            if os.path.isdir(full):
+                                shutil.rmtree(full)
+                            else:
+                                os.remove(full)
+                    else:
+                        os.makedirs(www_root, exist_ok=True)
+                    # copy files
+                    for item in os.listdir(final_dir):
+                        s = os.path.join(final_dir, item)
+                        d = os.path.join(www_root, item)
+                        if os.path.isdir(s):
+                            shutil.copytree(s, d)
+                        else:
+                            shutil.copy2(s, d)
+                except Exception as e:
+                    print('Failed to copy to www root', e)
+
             # Record deployment
             record = {
                 'task': name,
                 'timestamp': datetime.utcnow().isoformat() + 'Z',
-                'path': final_dir
+                'path': remote_deploy_path if remote_deploy_path else final_dir
             }
+            # attach remote compose result if present
+            try:
+                if 'remote_compose_result' in locals() and remote_compose_result is not None:
+                    record['remote_compose'] = remote_compose_result
+            except Exception:
+                pass
             write_deploy_record(task_dir, record)
             # Update task status to deployed
                 try:

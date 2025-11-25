@@ -1,12 +1,21 @@
 import os
+import sys
 import time
 import json
 import yaml
 import subprocess
+import shlex
 import requests
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import xml.etree.ElementTree as ET
+
+# allow importing utils from repository root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+try:
+    from utils import runner as runner_utils
+except Exception:
+    runner_utils = None
 
 WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
 MANAGER_URL = os.environ.get('MANAGER_URL', 'http://manager:8080')
@@ -72,6 +81,54 @@ def run_tests(task_dir, spec, run_dir=None):
     timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
     report_file = os.path.join(reports_dir, f'test-report-{timestamp}.txt')
     report_xml = os.path.join(reports_dir, f'test-report-{timestamp}.xml')
+
+    # Check runner selection
+    runner = 'local'
+    if runner_utils:
+        try:
+            runner = runner_utils.select_runner('test')
+        except Exception:
+            runner = 'local'
+
+    if runner == 'remote-ssh' and runner_utils:
+        host = os.environ.get('REMOTE_TEST_HOST')
+        user = os.environ.get('REMOTE_TEST_USER')
+        port = os.environ.get('REMOTE_TEST_SSH_PORT')
+        key = os.environ.get('REMOTE_TEST_SSH_KEY')
+        remote_base = os.environ.get('REMOTE_TEST_REMOTE_PATH', '/tmp/devsys/tests')
+        remote_path = f"{remote_base}/{os.path.basename(task_dir)}"
+        try:
+            if not host or not user:
+                raise RuntimeError('remote test host/user not configured')
+            known_hosts = os.environ.get('REMOTE_TEST_KNOWN_HOSTS')
+            ok = runner_utils.remote_copy(target_dir, remote_path, host, user, port=port, key_path=key, known_hosts=known_hosts)
+            if not ok:
+                raise RuntimeError('remote copy failed')
+            # Build command string
+            if isinstance(cmd, list):
+                cmd_str = ' '.join(shlex.quote(c) for c in cmd)
+            else:
+                cmd_str = str(cmd)
+            known_hosts = os.environ.get('REMOTE_TEST_KNOWN_HOSTS')
+            ret, out = runner_utils.remote_run(cmd_str, host, user, port=port, key_path=key, known_hosts=known_hosts, cwd=remote_path, timeout=300)
+            success = (ret == 0)
+            output = out or ''
+            # write report
+            with open(report_file, 'w') as f:
+                f.write(f"RESULT: {'PASS' if success else 'FAIL'}\n")
+                f.write(f"EXIT_CODE: {ret}\n")
+                f.write(f"TIMESTAMP: {datetime.utcnow().isoformat()}Z\n")
+                f.write("--- OUTPUT ---\n")
+                f.write(output or "(no output)\n")
+            write_junit_xml(report_xml, os.path.basename(task_dir), success, ret, output)
+            return success, report_file
+        except Exception as e:
+            with open(report_file, 'w') as f:
+                f.write(f"RESULT: ERROR\nEXIT_CODE: ERROR\nTIMESTAMP: {datetime.utcnow().isoformat()}Z\n--- OUTPUT ---\nRemote test error: {e}\n")
+            write_junit_xml(report_xml, os.path.basename(task_dir), False, 'ERROR', f'Remote test error: {e}')
+            return False, report_file
+
+    # Fallback to local execution
     try:
         proc = subprocess.run(cmd, cwd=target_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         output = proc.stdout.decode('utf-8', errors='replace')

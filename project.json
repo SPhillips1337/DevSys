@@ -3,7 +3,7 @@
   "name": "devsys-opencode-php-ssh",
   "slug": "devsys-opencode-php-ssh",
   "summary": "Developer-in-a-box PoC: multi-agent environment (manager, coding, testing, deployment, monitoring) that accepts user stories, runs opencode-like scaffolding, tests, deploys, and verifies artifacts.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "repository": "https://github.com/stephen/devsys-opencode-php-ssh",
   "goals": [
@@ -14,7 +14,8 @@
   "primary_features": [
     "Docker Compose manifest for agent services and PHP deployment target",
     "Manager HTTP API for task creation and lifecycle management (with optional token auth)",
-    "Coding, Testing, Deployment and Monitoring agents to run the full pipeline"
+    "Coding, Testing, Deployment and Monitoring agents to run the full pipeline",
+    "Remote-ssh runner for remote test/deploy execution (known_hosts enforced)"
   ],
   "tech_stack": {
     "orchestration": "Docker Compose",
@@ -26,11 +27,12 @@
     "Hardcoded credentials removed from Dockerfile; runtime .env provides N8N_USER_PASSWORD and N8N_USER_PUBKEY — do not commit .env",
     "Temporary private key earlier referenced should be removed from host after copying to clients",
     "SSH host port remapped to 2223 for this PoC; ensure firewall rules and restrict exposure",
-    "Manager API may be protected with MANAGER_API_TOKEN — use strong secrets and consider Docker secrets for production"
+    "Manager API may be protected with MANAGER_API_TOKEN — use strong secrets and consider Docker secrets for production",
+    "Remote SSH operations require a known_hosts file by default; set REMOTE_ALLOW_INSECURE_SSH only for short-lived PoC testing"
   ],
   "development_state": {
     "scaffold": "PoC",
-    "notes": "Manager, coding-agent, testing-agent, deployment-agent and monitoring-agent implemented. Some features remain: spec-kit integration, persistent DB, notification hooks, RBAC."
+    "notes": "Manager, coding-agent, testing-agent, deployment-agent and monitoring-agent implemented. Remote-ssh runner, runner helper, sample manifest and basic CI added. Remaining: full spec-kit integration, persistent DB, notification hooks, RBAC."
   },
   "development_plan": {
     "currentPhase": 2,
@@ -41,12 +43,13 @@
     ]
   },
   "todo": [
-    { "id": "1", "title": "Integrate spec-kit validators into manager", "status": "pending", "priority": "high" },
+    { "id": "1", "title": "Integrate spec-kit validators into manager (full toolchain)", "status": "pending", "priority": "high" },
     { "id": "2", "title": "Add notification hooks (Slack/webhook/email)", "status": "pending", "priority": "medium" },
     { "id": "3", "title": "Migrate task store to Postgres and add Redis queues", "status": "pending", "priority": "medium" },
-    { "id": "4", "title": "Add RBAC and per-agent tokens", "status": "pending", "priority": "medium" }
+    { "id": "4", "title": "Add RBAC and per-agent tokens", "status": "pending", "priority": "medium" },
+    { "id": "5", "title": "Document remote runner provisioning and Docker secrets examples", "status": "completed", "priority": "low" }
   ],
-  "files_of_interest": ["docker-compose.yml","Dockerfile.php","README.md","manager/app.py","deployment-agent/worker.py","testing-agent/worker.py","monitoring-agent/worker.py"],
+  "files_of_interest": ["docker-compose.yml","Dockerfile.php","README.md","manager/app.py","deployment-agent/worker.py","testing-agent/worker.py","monitoring-agent/worker.py","utils/runner.py",".github/workflows/ci.yml","specs/create-blog.json"],
   "open_questions": [
     "Do you want opencode bundled into its own container or kept inside the coding-agent?",
     "What level of autonomy should monitoring/auto-repair have? (auto-fix vs create task)"
@@ -66,7 +69,7 @@
     ],
     "environment": { "MANAGER_PORT": "8080", "DEPLOYMENT_HTTP_PORT": "8081", "SSH_PORT": "2223" }
   },
-  "lastUpdated": "2025-11-24T17:40:00Z",
+  "lastUpdated": "2025-11-25T12:00:00Z",
   "api_endpoints": [
     { "endpoint": "/api/tasks", "method": "POST", "description": "Create a task from a user story" },
     { "endpoint": "/api/tasks/<id>/deploy", "method": "POST", "description": "Mark task ready_for_deploy so deployment-agent will deploy it" },
@@ -74,9 +77,9 @@
     { "endpoint": "/api/tasks/<id>/tests/latest", "method": "GET", "description": "Fetch latest test report and summary for a task" }
   ],
   "external_services": { "opencode_installer": "https://opencode.ai/install" },
-  "required_env": ["Docker & Docker Compose installed on host","Create a local .env from .env.example to set runtime secrets"],
-  "current_capabilities": ["Manage tasks via manager API","Scaffold simple sites via coding-agent","Run tests via testing-agent with JUnit/XML reports","Deploy artifacts and verify via deployment-agent","Monitor services and create follow-up tasks via monitoring-agent"],
-  "next_steps": ["Integrate spec-kit and CI","Add notification hooks and RBAC","Migrate task store to Postgres/Redis"],
+  "required_env": ["Docker & Docker Compose installed on host","Create a local .env from .env.example to set runtime secrets","REMOTE_*_KNOWN_HOSTS or REMOTE_ALLOW_INSECURE_SSH for remote-ssh operations if used"],
+  "current_capabilities": ["Manage tasks via manager API","Scaffold simple sites via coding-agent","Run tests via testing-agent with JUnit/XML reports","Deploy artifacts and verify via deployment-agent","Monitor services and create follow-up tasks via monitoring-agent","Remote-ssh deploys and remote test execution (known_hosts enforced)","CI workflow for manifest/tests (.github/workflows/ci.yml)"] ,
+  "next_steps": ["Finish spec-kit integration","Add notification hooks and RBAC","Migrate task store to Postgres/Redis"],
   "architecture": { "overview": "Docker Compose with agent services (manager, coding-agent, testing-agent, deployment-agent, monitoring-agent) and a PHP container as local deployment target.",
     "components": {
       "manager": { "description": "Task manager and API", "implementation": "manager/app.py", "files": ["manager/app.py","manager/task_schema.json"], "status": "ready" },
@@ -88,7 +91,7 @@
     }
   },
   "infrastructure": { "type": "docker-compose", "notes": "Compose references ./workspace for shared artifacts and ./workspace/www for served content", "files": ["docker-compose.yml"] },
-  "status": "poс",
+  "status": "poc",
   "concept": "Agent-driven developer-in-a-box for rapid prototyping and automated task handoffs",
   "current_goals": ["Finish spec-kit integration","Add notification hooks","Harden API and secrets management"],
   "key_files": { "compose": "docker-compose.yml", "dockerfile_php": "Dockerfile.php", "readme": "README.md" }
