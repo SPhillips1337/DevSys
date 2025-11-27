@@ -9,6 +9,9 @@ Dates are in UTC. This file summarizes the work performed during the DevSys PoC 
 - Added `project.json` manifest describing goals, features, and how to run locally.
 
 ## 2025-11-24 — Manager and coding agent
+
+- Added manager endpoint to upload per-task secrets: `POST /api/tasks/<id>/secrets` and `GET /api/tasks/<id>/secrets`. Secrets are stored under `workspace/tasks/<id>/secrets` with restrictive permissions.
+- Added deployment schema to `specs/project.schema.json` to declare per-project deployment/runtime configuration (image, env, secrets, run_as, chown_paths, mode, pre_deploy/post_deploy).
 - Added `manager` service (Flask HTTP API) to accept user stories and create task specs.
 - Added `coding-agent` service to pick up `created` tasks and scaffold a simple static site into `workspace/tasks/<id>/src`.
 

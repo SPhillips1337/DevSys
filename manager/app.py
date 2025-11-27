@@ -15,6 +15,7 @@ PROJECT_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), '..', 'specs', 'pr
 # Manager API token for simple auth (optional). If set, requests must provide this token.
 MANAGER_API_TOKEN = os.environ.get('MANAGER_API_TOKEN')
 from functools import wraps
+from werkzeug.utils import secure_filename
 
 def auth_required(func):
     @wraps(func)
@@ -140,6 +141,81 @@ def create_task():
     with open(os.path.join(task_dir, 'meta.json'), 'w') as f:
         json.dump(meta, f)
     return jsonify(meta), 201
+
+@app.route('/api/tasks/<task_id>/secrets', methods=['POST'])
+@auth_required
+def upload_task_secrets(task_id):
+    """Upload secret files or env dict for a task. Files are saved under workspace/tasks/<id>/secrets with restrictive perms.
+    Accepts multipart/form-data files or JSON {"env": {"KEY": "value", ...}}."""
+    d = task_path(task_id)
+    if not os.path.exists(d):
+        return jsonify({'error': 'task not found'}), 404
+    secrets_dir = os.path.join(d, 'secrets')
+    os.makedirs(secrets_dir, exist_ok=True)
+    updated_files = []
+    # Handle JSON env payload
+    if request.is_json:
+        payload = request.get_json() or {}
+        env = payload.get('env')
+        if isinstance(env, dict):
+            env_path = os.path.join(secrets_dir, '.env')
+            try:
+                with open(env_path, 'w') as ef:
+                    for k, v in env.items():
+                        ef.write(f"{k}={v}\n")
+                try:
+                    os.chmod(env_path, 0o600)
+                except Exception:
+                    pass
+                updated_files.append('.env')
+            except Exception as e:
+                return jsonify({'error': 'failed to write env file', 'message': str(e)}), 500
+    # Handle file uploads
+    if request.files:
+        for key in request.files:
+            f = request.files.get(key)
+            if f:
+                filename = secure_filename(f.filename)
+                if not filename:
+                    continue
+                dest = os.path.join(secrets_dir, filename)
+                try:
+                    f.save(dest)
+                    try:
+                        os.chmod(dest, 0o600)
+                    except Exception:
+                        pass
+                    updated_files.append(filename)
+                except Exception as e:
+                    return jsonify({'error': 'failed to save file', 'file': filename, 'message': str(e)}), 500
+    # Update meta
+    meta_file = os.path.join(d, 'meta.json')
+    try:
+        if os.path.exists(meta_file):
+            with open(meta_file) as mf:
+                meta = json.load(mf)
+        else:
+            meta = {'id': task_id}
+        meta['secrets'] = True
+        meta['secret_files'] = sorted(list(set(meta.get('secret_files', []) + updated_files)))
+        with open(meta_file, 'w') as mf:
+            json.dump(meta, mf)
+    except Exception as e:
+        return jsonify({'error': 'failed to update meta', 'message': str(e)}), 500
+    return jsonify({'result': 'ok', 'files': updated_files}), 201
+
+
+@app.route('/api/tasks/<task_id>/secrets', methods=['GET'])
+def list_task_secrets(task_id):
+    d = task_path(task_id)
+    if not os.path.exists(d):
+        return jsonify({'error': 'task not found'}), 404
+    secrets_dir = os.path.join(d, 'secrets')
+    if not os.path.exists(secrets_dir):
+        return jsonify({'files': []})
+    files = [f for f in os.listdir(secrets_dir) if os.path.isfile(os.path.join(secrets_dir, f))]
+    return jsonify({'files': files})
+
 
 @app.route('/api/tasks', methods=['GET'])
 def list_tasks():

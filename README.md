@@ -44,6 +44,25 @@ Notes on current status (PoC)
 
 If you want me to continue, tell me which next step to implement (e.g., integrate spec-kit, add notification hooks, or migrate the task store).
 
+## Per-project deployment config & secrets
+
+You can now declare per-project or per-task deployment/runtime configuration in the project manifest under a `deployment` block. Typical fields:
+
+- `image` — optional container image to use as the runtime (e.g., `php:8.2-apache`).
+- `env` — key/value environment variables required by the deployed app (e.g., `OLLAMA_URL`, `OLLAMA_KEY`). These are persisted per-task under `workspace/tasks/<id>/secrets/.env` when the manifest is posted via the manager API.
+- `secrets` — a list of secret file names expected by the deployment. The manager will create placeholders when a manifest declares these; upload real secret values via the new secrets API (see below).
+- `run_as` — optional `{ uid, gid }` indicating the owner UID/GID files should be chown'd to on deploy to avoid workspace permission problems.
+- `chown_paths`, `mode`, `pre_deploy`, `post_deploy` — optional helpers to control ownership, permissions, and deployment hooks.
+
+Secrets and sensitive values
+
+- Do NOT commit secrets into manifests. Use the manager's secret upload API instead:
+  - `POST /api/tasks/<task_id>/secrets` — Accepts JSON `{"env": {...}}` or multipart file uploads. Files are saved to `workspace/tasks/<id>/secrets` with restrictive permissions (mode 600).
+  - `GET /api/tasks/<task_id>/secrets` — Lists uploaded secret files for a task.
+- For remote deploys, the deployment runner will transfer the task's `secrets/` directory along with the task files to the remote host securely (requires known_hosts or `REMOTE_ALLOW_INSECURE_SSH=true` for PoC only).
+
+These changes let you keep runtime-specific configuration and secrets isolated to a task or project instead of mixing them into the global DevSys `.env`.
+
 ## Project manifest support & tests
 
 - The manager now accepts project manifests conforming to `specs/project.schema.json`. A sample manifest is provided at `specs/create-blog.json`.
