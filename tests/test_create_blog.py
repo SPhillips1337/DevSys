@@ -26,7 +26,12 @@ def test_post_project_manifest_creates_task(tmp_path, monkeypatch):
     with open(specs_path) as f:
         payload = json.load(f)
 
-    resp = client.post('/api/tasks', json=payload)
+    # If the manager requires API token auth, include it in headers
+    headers = {}
+    token = os.environ.get('MANAGER_API_TOKEN')
+    if token:
+        headers['Authorization'] = f"Bearer {token}"
+    resp = client.post('/api/tasks', json=payload, headers=headers)
     assert resp.status_code == 201, resp.get_data(as_text=True)
     meta = resp.get_json()
     assert 'id' in meta
