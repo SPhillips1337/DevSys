@@ -81,6 +81,10 @@ def create_task():
             'deploy': True,
             'project': proj
         }
+        # If project includes a deployment block, copy it up into the task spec for easier consumption
+        if isinstance(proj, dict) and proj.get('deployment'):
+            spec['deployment'] = proj.get('deployment')
+
 
     # Validate spec against the task schema if available
     if TASK_SCHEMA:
@@ -100,6 +104,39 @@ def create_task():
     }
     with open(spec_path, 'w') as f:
         yaml.safe_dump(spec, f)
+
+    # If deployment env/secrets are present, persist them under workspace/tasks/<id>/secrets
+    deployment = spec.get('deployment') if isinstance(spec, dict) else None
+    if deployment:
+        secrets_dir = os.path.join(task_dir, 'secrets')
+        try:
+            os.makedirs(secrets_dir, exist_ok=True)
+            # Write env vars as .env file
+            env = deployment.get('env') or {}
+            if env:
+                env_path = os.path.join(secrets_dir, '.env')
+                with open(env_path, 'w') as ef:
+                    for k, v in env.items():
+                        ef.write(f"{k}={v}\n")
+                try:
+                    os.chmod(env_path, 0o600)
+                except Exception:
+                    pass
+            # Create placeholder secret files for declared secrets (manager won't store secret values in manifest)
+            declared = deployment.get('secrets') or []
+            for name in declared:
+                p = os.path.join(secrets_dir, name)
+                if not os.path.exists(p):
+                    open(p, 'w').close()
+                    try:
+                        os.chmod(p, 0o600)
+                    except Exception:
+                        pass
+            # Update meta to indicate secrets present
+            meta['secrets'] = True
+        except Exception as e:
+            print('Failed to write deployment secrets/env for task', task_id, e)
+
     with open(os.path.join(task_dir, 'meta.json'), 'w') as f:
         json.dump(meta, f)
     return jsonify(meta), 201

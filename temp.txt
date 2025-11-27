@@ -1,0 +1,5 @@
+Finish spec-kit integration and add manager CLI hooks (higher effort).
+  - Implement the GitHub PR flow in coding-agent using GITHUB_TOKEN.
+add a quick integration test that verifies select_runner() behavior with environment variables?
+  Implement remote cleanup (remove previous remote deploys before copying),
+- Or test the remote-runner code against your real remote (I can help with a manual test plan you can run since I can't reach your LAN)?

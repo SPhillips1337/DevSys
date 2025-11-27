@@ -1,0 +1,18 @@
+{
+  "$comment": "Patch: adds a 'deployment' property for project/task-level runtime and deployment configuration.",
+  "deployment": {
+    "type": "object",
+    "description": "Per-project or per-task deployment/runtime configuration (image, env, runtime user, permission fixes, hooks).",
+    "properties": {
+      "image": { "type": "string", "description": "Optional container/image to use as the deployment runtime (e.g., php:8.2-apache)" },
+      "compose_override": { "type": "string", "description": "Path to a docker-compose override file or compose snippet to use when deploying this project." },
+      "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Environment variables required by the deployed app (e.g., OLLAMA_URL, OLLAMA_KEY, etc.). These should be provided per-task/project rather than in DevSys .env." },
+      "secrets": { "type": "array", "items": { "type": "string" }, "description": "List of secret names expected by the deployment; manager may place them under workspace/tasks/<id>/secrets or instruct to use Docker secrets." },
+      "run_as": { "type": "object", "properties": { "uid": { "type": "integer" }, "gid": { "type": "integer" } }, "description": "Optional UID/GID the deployed files should be owned by (helps avoid workspace permission mismatch)." },
+      "chown_paths": { "type": "array", "items": { "type": "string" }, "description": "Relative paths under the deployment root to chown/chmod after deploy (defaults to root of deploy)." },
+      "mode": { "type": "string", "description": "Optional octal string (e.g. '0755') to apply to deployed files/directories." },
+      "pre_deploy": { "type": "array", "items": { "type": "string" }, "description": "Commands to run before deployment into the target runtime." },
+      "post_deploy": { "type": "array", "items": { "type": "string" }, "description": "Commands to run after deployment (e.g., migrations, cache clear)." }
+    }
+  }
+}

@@ -1,8 +1,8 @@
 FROM php:8.2-apache
 
-# Install OpenSSH server
+# Install OpenSSH server and ffmpeg
 RUN apt-get update && \
-    apt-get install -y openssh-server && \
+    apt-get install -y openssh-server ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

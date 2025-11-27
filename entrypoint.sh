@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
+# Ensure shared workspace exists and is writable by web user
+if [ ! -d "/workspace" ]; then
+  mkdir -p /workspace || true
+fi
+# Attempt to chown workspace to www-data so PHP can write; ignore failures
+chown -R www-data:www-data /workspace || true
+
 # If a deployed current app exists, copy it into /var/www/html
 if [ -d "/var/www/deploy/current" ]; then
   echo "Found deployed app at /var/www/deploy/current. Copying into /var/www/html."

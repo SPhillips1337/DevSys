@@ -132,3 +132,46 @@ def remote_run(cmd, host, user, port=None, key_path=None, known_hosts=None, cwd=
         return e.returncode, (e.output.decode('utf-8', errors='replace') if e.output else str(e))
     except Exception as e:
         return -1, str(e)
+
+# New helper: copy secrets and compose_override when doing a remote_copy of a task
+
+def remote_copy_with_secrets_and_compose(task_dir, dest_path, host, user, port=None, key_path=None, known_hosts=None):
+    """Copy a task directory to remote host and include secrets dir and compose_override if present.
+    Looks for task_dir/secrets and task_dir/compose_override.yml (or .yaml) and copies them alongside the src.
+    """
+    # Ensure target base dest_path exists on remote by creating with remote_run
+    try:
+        rc, out = remote_run(f"mkdir -p {dest_path}", host, user, port=port, key_path=key_path, known_hosts=known_hosts)
+        if rc != 0:
+            print('Failed to ensure remote dest path', rc, out)
+            return False
+    except Exception as e:
+        print('remote copy prep failed', e)
+        return False
+
+    # Copy main task_dir (src) -> dest_path
+    ok = remote_copy(task_dir, dest_path, host, user, port=port, key_path=key_path, known_hosts=known_hosts)
+    if not ok:
+        return False
+
+    # Copy secrets directory if exists
+    secrets_local = os.path.join(task_dir, 'secrets')
+    if os.path.exists(secrets_local):
+        secrets_remote = os.path.join(dest_path, 'secrets')
+        ok = remote_copy(secrets_local, secrets_remote, host, user, port=port, key_path=key_path, known_hosts=known_hosts)
+        if not ok:
+            print('Failed to copy secrets dir')
+            return False
+
+    # Copy compose_override if present
+    for name in ('compose_override.yml', 'compose_override.yaml'):
+        local = os.path.join(task_dir, name)
+        if os.path.exists(local):
+            remote = os.path.join(dest_path, name)
+            ok = remote_copy(local, remote, host, user, port=port, key_path=key_path, known_hosts=known_hosts)
+            if not ok:
+                print('Failed to copy compose_override')
+                return False
+
+    return True
+

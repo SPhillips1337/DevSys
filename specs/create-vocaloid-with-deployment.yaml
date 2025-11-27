@@ -1,0 +1,25 @@
+id: task-vocaloid-001
+title: Create Vocaloid-style site (full-featured)
+owner: manager
+kind: deployment
+priority: high
+summary: Web app for user-recorded phonemes and LLM-driven phonetic rendering using ffmpeg
+description: Bootstrap frontend + PHP backend where users sign up, record phoneme snippets, request sentence rendering. Renderer uses Ollama to phoneticize and ffmpeg to concatenate audio.
+acceptance:
+  - url: http://localhost:8081
+    should_respond: 200
+  - description: User can record and upload a phoneme and later request a render job that produces an audio file
+tests:
+  - run: pytest tests/test_vocaloid_smoke.py
+deploy: true
+deployment:
+  image: php:8.2-apache
+  env:
+    OLLAMA_URL: https://automatically-bedford-horse-solutions.trycloudflare.com/
+    OLLAMA_KEY: dummy_key
+    OLLAMA_MODEL: qwen2.5:7b-instruct-q4_K_M
+  run_as:
+    uid: 1000
+    gid: 1000
+  chown_paths:
+    - .

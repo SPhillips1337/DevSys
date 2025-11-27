@@ -135,6 +135,70 @@ while True:
                 shutil.move(final_dir, archived)
             # Atomically move new current into place
             os.rename(current_dir, final_dir)
+            # Apply per-task/project deployment ownership and mode if provided in spec
+            deployment_cfg = spec.get('deployment') if isinstance(spec, dict) else None
+            if deployment_cfg:
+                try:
+                    run_as = deployment_cfg.get('run_as') or {}
+                    uid = run_as.get('uid')
+                    gid = run_as.get('gid')
+                    chown_paths = deployment_cfg.get('chown_paths') or ['.']
+                    mode = deployment_cfg.get('mode')
+                    # Normalize chown_paths to list
+                    if isinstance(chown_paths, str):
+                        chown_paths = [chown_paths]
+                    if (uid is not None or gid is not None):
+                        for rel in chown_paths:
+                            target = os.path.join(final_dir, rel)
+                            if not os.path.exists(target):
+                                continue
+                            for root, dirs, files in os.walk(target):
+                                try:
+                                    st = os.stat(root)
+                                    cu = uid if uid is not None else st.st_uid
+                                    cg = gid if gid is not None else st.st_gid
+                                    os.chown(root, cu, cg)
+                                except Exception as e:
+                                    print('chown failed on', root, e)
+                                for d in dirs:
+                                    p = os.path.join(root, d)
+                                    try:
+                                        os.chown(p, cu, cg)
+                                    except Exception as e:
+                                        print('chown failed on', p, e)
+                                for f in files:
+                                    p = os.path.join(root, f)
+                                    try:
+                                        os.chown(p, cu, cg)
+                                    except Exception as e:
+                                        print('chown failed on', p, e)
+                    if mode:
+                        try:
+                            m = int(mode, 8) if isinstance(mode, str) else int(mode)
+                            for rel in chown_paths:
+                                target = os.path.join(final_dir, rel)
+                                if not os.path.exists(target):
+                                    continue
+                                for root, dirs, files in os.walk(target):
+                                    try:
+                                        os.chmod(root, m)
+                                    except Exception as e:
+                                        print('chmod failed on', root, e)
+                                    for d in dirs:
+                                        try:
+                                            os.chmod(os.path.join(root, d), m)
+                                        except Exception as e:
+                                            print('chmod failed on', os.path.join(root, d), e)
+                                    for f in files:
+                                        try:
+                                            os.chmod(os.path.join(root, f), m)
+                                        except Exception as e:
+                                            print('chmod failed on', os.path.join(root, f), e)
+                        except Exception as e:
+                            print('Failed to apply mode', e)
+                except Exception as e:
+                    print('Failed to apply deployment ownership/mode', e)
+
             # Decide runner and optionally copy deployed files to a remote host or local www (fallback served dir)
             runner = 'local'
             if runner_utils:
@@ -157,7 +221,12 @@ while True:
                     ok = False
                     known_hosts = os.environ.get('EXTERNAL_DEPLOY_KNOWN_HOSTS')
                     if runner_utils:
-                        ok = runner_utils.remote_copy(final_dir, remote_path, host, user, port=port, key_path=key, known_hosts=known_hosts)
+                        # Use helper that copies the whole task directory including secrets and compose overrides
+                        try:
+                            ok = runner_utils.remote_copy_with_secrets_and_compose(task_dir, remote_path, host, user, port=port, key_path=key, known_hosts=known_hosts)
+                        except Exception as e:
+                            print('remote_copy_with_secrets_and_compose failed', e)
+                            ok = False
                     if ok:
                         remote_deploy_path = f"{user}@{host}:{remote_path}"
                         print('Deployed task', name, 'to remote', remote_deploy_path)
@@ -165,7 +234,8 @@ while True:
                         run_compose = os.environ.get('EXTERNAL_DEPLOY_RUN_COMPOSE', '').lower() == 'true'
                         if run_compose:
                             try:
-                                compose_cmd = f"docker compose up -d --build"
+                                # If a compose_override file was copied, use it; otherwise fall back to default compose
+                                compose_cmd = "if [ -f compose_override.yml ]; then docker compose -f compose_override.yml up -d --build; else docker compose up -d --build; fi"
                                 ret, out = runner_utils.remote_run(compose_cmd, host, user, port=port, key_path=key, known_hosts=known_hosts, cwd=remote_path, timeout=600)
                                 print('Remote compose result:', ret)
                                 remote_compose_result = {'rc': ret, 'output': out}

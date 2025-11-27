@@ -80,9 +80,29 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - WORKSPACE=/workspace
     ports:
       - "127.0.0.1:8081:80"
       - "127.0.0.1:2223:22"
     volumes:
+      - ./workspace:/workspace
       - ./workspace/deploy:/var/www/deploy:rw
       - ./workspace/www:/var/www/www:rw
+      # Mount the vocaloid app into the web root
+      - ./apps/vocaloid:/var/www/www/vocaloid:ro
+
+  renderer:
+    build: ./renderer
+    container_name: devsys_renderer
+    depends_on:
+      - php
+    env_file:
+      - .env
+    volumes:
+      - ./workspace:/workspace
+    environment:
+      - WORKSPACE=/workspace
+      - OLLAMA_URL=${OLLAMA_URL}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - OLLAMA_KEY=${OLLAMA_KEY}
