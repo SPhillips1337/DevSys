@@ -1,3 +1,28 @@
+# Core Flask dependencies
 flask==2.3.2
+werkzeug==2.3.6
+
+# Data handling
 pyyaml==6.0
 jsonschema==4.21.0
+
+# HTTP client with retries
+requests==2.31.0
+urllib3==2.0.4
+
+# Logging and monitoring
+structlog==23.1.0
+
+# Configuration validation
+pydantic==2.3.0
+
+# Security
+cryptography==41.0.3
+
+# Development and testing
+pytest==7.4.0
+pytest-flask==1.2.0
+pytest-cov==4.1.0
+
+# Production server
+gunicorn==21.2.0

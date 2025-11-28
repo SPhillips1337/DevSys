@@ -1,0 +1,268 @@
+version: '3.8'
+
+# Improved Docker Compose configuration with better security and monitoring
+services:
+  manager:
+    build: ./manager
+    container_name: devsys_manager
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"  # Bind to localhost only for security
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs  # Centralized logging
+    environment:
+      - WORKSPACE=/workspace
+      - SERVICE_NAME=manager
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MANAGER_API_TOKEN=${MANAGER_API_TOKEN}
+      - MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-16777216}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-100}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/tasks"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - devsys-network
+
+  coding-agent:
+    build: ./coding-agent
+    container_name: devsys_coding_agent
+    restart: unless-stopped
+    depends_on:
+      manager:
+        condition: service_healthy
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs
+    environment:
+      - MANAGER_URL=http://manager:8080
+      - WORKSPACE=/workspace
+      - SERVICE_NAME=coding-agent
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-2}
+      - AGENT_TIMEOUT=${AGENT_TIMEOUT:-300}
+    env_file:
+      - .env
+    networks:
+      - devsys-network
+
+  deployment-agent:
+    build: ./deployment-agent
+    container_name: devsys_deployment_agent
+    restart: unless-stopped
+    depends_on:
+      manager:
+        condition: service_healthy
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs
+      # Mount SSH keys securely using Docker secrets
+      - type: bind
+        source: ./secrets/external_deploy_key
+        target: /run/secrets/external_deploy_key
+        read_only: true
+      - type: bind
+        source: ./secrets/external_deploy_known_hosts
+        target: /run/secrets/external_deploy_known_hosts
+        read_only: true
+    environment:
+      - MANAGER_URL=http://manager:8080
+      - WORKSPACE=/workspace
+      - SERVICE_NAME=deployment-agent
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-2}
+      - EXTERNAL_DEPLOY_SSH_KEY=/run/secrets/external_deploy_key
+      - EXTERNAL_DEPLOY_KNOWN_HOSTS=/run/secrets/external_deploy_known_hosts
+    env_file:
+      - .env
+    networks:
+      - devsys-network
+
+  testing-agent:
+    build: ./testing-agent
+    container_name: devsys_testing_agent
+    restart: unless-stopped
+    depends_on:
+      manager:
+        condition: service_healthy
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs
+      # Mount SSH keys for remote testing
+      - type: bind
+        source: ./secrets/remote_test_key
+        target: /run/secrets/remote_test_key
+        read_only: true
+      - type: bind
+        source: ./secrets/remote_known_hosts
+        target: /run/secrets/remote_known_hosts
+        read_only: true
+    environment:
+      - MANAGER_URL=http://manager:8080
+      - WORKSPACE=/workspace
+      - SERVICE_NAME=testing-agent
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TESTING_CONCURRENCY=${TESTING_CONCURRENCY:-2}
+      - POLL_INTERVAL=${POLL_INTERVAL:-5}
+      - REMOTE_TEST_SSH_KEY=/run/secrets/remote_test_key
+      - REMOTE_TEST_KNOWN_HOSTS=/run/secrets/remote_known_hosts
+    env_file:
+      - .env
+    networks:
+      - devsys-network
+
+  monitoring-agent:
+    build: ./monitoring-agent
+    container_name: devsys_monitoring_agent
+    restart: unless-stopped
+    depends_on:
+      manager:
+        condition: service_healthy
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs
+      - ./monitoring:/monitoring:ro
+    environment:
+      - MANAGER_URL=http://manager:8080
+      - WORKSPACE=/workspace
+      - SERVICE_NAME=monitoring-agent
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CHECKS_FILE=/monitoring/checks.yaml
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
+    env_file:
+      - .env
+    networks:
+      - devsys-network
+
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: devsys_php
+    restart: unless-stopped
+    environment:
+      - WORKSPACE=/workspace
+      - SERVICE_NAME=php-server
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8081:80"   # Web server
+      - "127.0.0.1:2223:22"   # SSH (non-standard port)
+    volumes:
+      - ./workspace:/workspace
+      - ./workspace/deploy:/var/www/deploy:rw
+      - ./workspace/www:/var/www/www:rw
+      - ./apps/vocaloid:/var/www/www/vocaloid:ro
+      - ./logs:/workspace/logs
+    env_file:
+      - .env
+    networks:
+      - devsys-network
+
+  renderer:
+    build: ./renderer
+    container_name: devsys_renderer
+    restart: unless-stopped
+    depends_on:
+      php:
+        condition: service_started
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/workspace/logs
+    environment:
+      - WORKSPACE=/workspace
+      - SERVICE_NAME=renderer
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - OLLAMA_URL=${OLLAMA_URL}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - OLLAMA_KEY=${OLLAMA_KEY}
+    env_file:
+      - .env
+    networks:
+      - devsys-network
+
+  # Optional: Log aggregation service
+  log-aggregator:
+    image: fluent/fluent-bit:2.1
+    container_name: devsys_log_aggregator
+    restart: unless-stopped
+    volumes:
+      - ./logs:/workspace/logs:ro
+      - ./config/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+    ports:
+      - "127.0.0.1:24224:24224"  # Fluentd forward protocol
+    networks:
+      - devsys-network
+    profiles:
+      - monitoring
+
+  # Optional: Metrics collection
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: devsys_prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - devsys-network
+    profiles:
+      - monitoring
+
+  # Optional: Metrics visualization
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: devsys_grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - devsys-network
+    profiles:
+      - monitoring
+
+networks:
+  devsys-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# Security and operational improvements:
+# 1. All services bind to localhost only (127.0.0.1) for security
+# 2. Health checks for critical services
+# 3. Proper service dependencies with health conditions
+# 4. Centralized logging directory
+# 5. Secure secret mounting using bind mounts with read-only access
+# 6. Restart policies for resilience
+# 7. Custom network for service isolation
+# 8. Optional monitoring stack with profiles
+# 9. Proper volume management for persistent data
+# 10. Environment variable configuration with defaults

@@ -1,27 +1,53 @@
 import os
 import json
 import uuid
+import sys
 from flask import Flask, request, jsonify
 from datetime import datetime
 import yaml
 import jsonschema
 import shutil
-
-app = Flask(__name__)
-WORKSPACE = os.environ.get('WORKSPACE', '/workspace')
-TASKS_DIR = os.path.join(WORKSPACE, 'tasks')
-SCHEMA_PATH = os.path.join(os.path.dirname(__file__), 'task_schema.json')
-PROJECT_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), '..', 'specs', 'project.schema.json')
-# Manager API token for simple auth (optional). If set, requests must provide this token.
-MANAGER_API_TOKEN = os.environ.get('MANAGER_API_TOKEN')
 from functools import wraps
 from werkzeug.utils import secure_filename
 
+# Add utils to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils.logging_config import setup_logging, get_logger, log_operation
+from utils.config import get_config, ConfigurationError
+from utils.exceptions import (
+    DevSysError, ValidationError, FilesystemError, 
+    AuthenticationError, handle_errors
+)
+
+# Initialize logging and configuration
+logger = setup_logging('manager')
+config = None
+try:
+    config = get_config('manager')
+    logger.info("Manager service starting", extra={'config': config.to_dict()})
+except ConfigurationError as e:
+    logger.error(f"Configuration error: {e}")
+    # Use fallback configuration for testing
+    from utils.config import DevSysConfig
+    config = DevSysConfig(service_name='manager')
+
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = config.manager.max_request_size
+
+WORKSPACE = config.agent.workspace
+TASKS_DIR = os.path.join(WORKSPACE, 'tasks')
+SCHEMA_PATH = os.path.join(os.path.dirname(__file__), 'task_schema.json')
+PROJECT_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), '..', 'specs', 'project.schema.json')
+MANAGER_API_TOKEN = config.manager.api_token
+
 def auth_required(func):
+    """Decorator to require API token authentication."""
     @wraps(func)
     def wrapper(*args, **kwargs):
         if not MANAGER_API_TOKEN:
             return func(*args, **kwargs)
+        
         # Accept Authorization: Bearer <token> or X-Api-Token header
         auth = request.headers.get('Authorization', '')
         token = None
@@ -29,34 +55,147 @@ def auth_required(func):
             token = auth.split(' ', 1)[1].strip()
         if not token:
             token = request.headers.get('X-Api-Token')
+        
         if token != MANAGER_API_TOKEN:
-            return jsonify({'error': 'unauthorized'}), 401
+            logger.warning("Unauthorized API access attempt", extra={
+                'endpoint': request.endpoint,
+                'remote_addr': request.remote_addr,
+                'user_agent': request.headers.get('User-Agent')
+            })
+            raise AuthenticationError("Invalid or missing API token")
+        
         return func(*args, **kwargs)
     return wrapper
 
+
+@app.errorhandler(DevSysError)
+def handle_devsys_error(error):
+    """Handle DevSys custom exceptions."""
+    logger.error(f"DevSys error: {error.message}", extra=error.to_dict())
+    return jsonify(error.to_dict()), 400
+
+
+@app.errorhandler(Exception)
+def handle_generic_error(error):
+    """Handle unexpected exceptions."""
+    logger.error(f"Unexpected error: {str(error)}", exc_info=True)
+    return jsonify({
+        'error': 'Internal server error',
+        'message': 'An unexpected error occurred'
+    }), 500
+
 # Load schemas
+@log_operation("load_json_schema")
 def _load_json(path):
+    """Load JSON schema with error handling."""
     try:
         with open(path) as f:
             return json.load(f)
-    except Exception:
+    except FileNotFoundError:
+        logger.warning(f"Schema file not found: {path}")
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in schema file {path}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading schema {path}: {e}")
         return None
 
 TASK_SCHEMA = _load_json(SCHEMA_PATH)
 PROJECT_SCHEMA = _load_json(PROJECT_SCHEMA_PATH)
 
-os.makedirs(TASKS_DIR, exist_ok=True)
+# Lazy initialization flag
+_workspace_initialized = False
 
-def task_path(task_id):
+def ensure_workspace():
+    """Ensure workspace directories exist (lazy initialization)."""
+    global _workspace_initialized
+    if _workspace_initialized:
+        return
+    
+    try:
+        os.makedirs(TASKS_DIR, exist_ok=True)
+        logger.info(f"Workspace initialized at {WORKSPACE}")
+        _workspace_initialized = True
+    except OSError as e:
+        logger.error(f"Failed to create workspace directory: {e}")
+        raise FilesystemError(f"Cannot create workspace directory: {WORKSPACE}", path=WORKSPACE, cause=e)
+
+
+def task_path(task_id: str) -> str:
+    """Get the filesystem path for a task."""
+    if not task_id or '..' in task_id or '/' in task_id:
+        raise ValidationError("Invalid task ID", field="task_id", value=task_id)
     return os.path.join(TASKS_DIR, task_id)
+
+def _handle_deployment_secrets(task_dir: str, deployment: dict, meta: dict) -> None:
+    """Handle deployment secrets and environment variables."""
+    secrets_dir = os.path.join(task_dir, 'secrets')
+    try:
+        os.makedirs(secrets_dir, exist_ok=True)
+        
+        # Write env vars as .env file
+        env = deployment.get('env') or {}
+        if env:
+            env_path = os.path.join(secrets_dir, '.env')
+            with open(env_path, 'w') as ef:
+                for k, v in env.items():
+                    ef.write(f"{k}={v}\n")
+            try:
+                os.chmod(env_path, 0o600)
+            except OSError:
+                logger.warning(f"Could not set permissions on {env_path}")
+        
+        # Create placeholder secret files for declared secrets
+        declared = deployment.get('secrets') or []
+        for name in declared:
+            if not name or '..' in name or '/' in name:
+                logger.warning(f"Skipping invalid secret name: {name}")
+                continue
+            p = os.path.join(secrets_dir, name)
+            if not os.path.exists(p):
+                with open(p, 'w') as f:
+                    f.write('')  # Create empty placeholder
+                try:
+                    os.chmod(p, 0o600)
+                except OSError:
+                    logger.warning(f"Could not set permissions on {p}")
+        
+        # Update meta to indicate secrets present
+        meta['secrets'] = True
+        logger.debug(f"Created secrets directory with {len(env)} env vars and {len(declared)} secret files")
+        
+    except OSError as e:
+        logger.error(f"Failed to create deployment secrets: {e}")
+        raise FilesystemError("Failed to create secrets directory", path=secrets_dir, cause=e)
 
 @app.route('/api/tasks', methods=['POST'])
 @auth_required
+@handle_errors("create_task")
 def create_task():
+    """Create a new task from user input or project manifest."""
+    ensure_workspace()  # Lazy initialization
+    
     data = request.get_json() or {}
     task_id = data.get('id') or f"task-{uuid.uuid4().hex[:8]}"
     title = data.get('title', 'untitled')
     spec = data.get('spec') or data
+
+    logger.info(f"Creating task {task_id}", extra={
+        'task_id': task_id,
+        'title': title,
+        'has_spec': bool(spec)
+    })
+
+    # Validate task ID
+    if not task_id.replace('-', '').replace('_', '').isalnum():
+        raise ValidationError("Task ID must be alphanumeric with hyphens/underscores only", 
+                            field="id", value=task_id)
+
+    # Check if task already exists
+    task_dir = task_path(task_id)
+    if os.path.exists(task_dir):
+        raise ValidationError(f"Task {task_id} already exists", field="id", value=task_id)
 
     # If the spec looks like a full project manifest and a project schema exists, validate and convert it
     is_project_manifest = False
@@ -64,14 +203,18 @@ def create_task():
         try:
             jsonschema.validate(instance=spec, schema=PROJECT_SCHEMA)
             is_project_manifest = True
+            logger.info(f"Validated project manifest for task {task_id}")
         except jsonschema.ValidationError as e:
-            return jsonify({'error': 'project manifest validation failed', 'message': str(e)}), 400
+            logger.error(f"Project manifest validation failed for task {task_id}: {e}")
+            raise ValidationError(f"Project manifest validation failed: {str(e)}")
 
     if is_project_manifest:
         proj = spec
         # Prefer slug from project manifest as task id if available
         if proj.get('slug'):
             task_id = proj.get('slug')
+            task_dir = task_path(task_id)  # Update task_dir with new ID
+        
         # Convert project manifest to a task spec for deployment by default
         spec = {
             'id': task_id,
@@ -86,61 +229,49 @@ def create_task():
         if isinstance(proj, dict) and proj.get('deployment'):
             spec['deployment'] = proj.get('deployment')
 
-
     # Validate spec against the task schema if available
     if TASK_SCHEMA:
         try:
             jsonschema.validate(instance=spec, schema=TASK_SCHEMA)
+            logger.debug(f"Task spec validated for {task_id}")
         except jsonschema.ValidationError as e:
-            return jsonify({'error': 'spec validation failed', 'message': str(e)}), 400
+            logger.error(f"Task spec validation failed for {task_id}: {e}")
+            raise ValidationError(f"Task spec validation failed: {str(e)}")
 
-    task_dir = task_path(task_id)
-    os.makedirs(task_dir, exist_ok=True)
-    spec_path = os.path.join(task_dir, 'spec.yaml')
-    meta = {
-        'id': task_id,
-        'title': title,
-        'status': 'created',
-        'created_at': datetime.utcnow().isoformat() + 'Z'
-    }
-    with open(spec_path, 'w') as f:
-        yaml.safe_dump(spec, f)
-
-    # If deployment env/secrets are present, persist them under workspace/tasks/<id>/secrets
-    deployment = spec.get('deployment') if isinstance(spec, dict) else None
-    if deployment:
-        secrets_dir = os.path.join(task_dir, 'secrets')
-        try:
-            os.makedirs(secrets_dir, exist_ok=True)
-            # Write env vars as .env file
-            env = deployment.get('env') or {}
-            if env:
-                env_path = os.path.join(secrets_dir, '.env')
-                with open(env_path, 'w') as ef:
-                    for k, v in env.items():
-                        ef.write(f"{k}={v}\n")
-                try:
-                    os.chmod(env_path, 0o600)
-                except Exception:
-                    pass
-            # Create placeholder secret files for declared secrets (manager won't store secret values in manifest)
-            declared = deployment.get('secrets') or []
-            for name in declared:
-                p = os.path.join(secrets_dir, name)
-                if not os.path.exists(p):
-                    open(p, 'w').close()
-                    try:
-                        os.chmod(p, 0o600)
-                    except Exception:
-                        pass
-            # Update meta to indicate secrets present
-            meta['secrets'] = True
-        except Exception as e:
-            print('Failed to write deployment secrets/env for task', task_id, e)
-
-    with open(os.path.join(task_dir, 'meta.json'), 'w') as f:
-        json.dump(meta, f)
-    return jsonify(meta), 201
+    # Create task directory and files
+    try:
+        os.makedirs(task_dir, exist_ok=True)
+        
+        spec_path = os.path.join(task_dir, 'spec.yaml')
+        with open(spec_path, 'w') as f:
+            yaml.safe_dump(spec, f)
+        
+        meta = {
+            'id': task_id,
+            'title': title,
+            'status': 'created',
+            'created_at': datetime.utcnow().isoformat() + 'Z'
+        }
+        
+        # Handle deployment secrets if present
+        deployment = spec.get('deployment') if isinstance(spec, dict) else None
+        if deployment:
+            _handle_deployment_secrets(task_dir, deployment, meta)
+        
+        meta_path = os.path.join(task_dir, 'meta.json')
+        with open(meta_path, 'w') as f:
+            json.dump(meta, f, indent=2)
+        
+        logger.info(f"Task {task_id} created successfully", extra={
+            'task_id': task_id,
+            'has_secrets': meta.get('secrets', False)
+        })
+        
+        return jsonify(meta), 201
+        
+    except OSError as e:
+        logger.error(f"Failed to create task files for {task_id}: {e}")
+        raise FilesystemError(f"Failed to create task directory", path=task_dir, cause=e)
 
 @app.route('/api/tasks/<task_id>/secrets', methods=['POST'])
 @auth_required
@@ -219,13 +350,15 @@ def list_task_secrets(task_id):
 
 @app.route('/api/tasks', methods=['GET'])
 def list_tasks():
+    ensure_workspace()  # Lazy initialization
     tasks = []
-    for name in os.listdir(TASKS_DIR):
-        d = task_path(name)
-        meta_file = os.path.join(d, 'meta.json')
-        if os.path.exists(meta_file):
-            with open(meta_file) as f:
-                tasks.append(json.load(f))
+    if os.path.exists(TASKS_DIR):
+        for name in os.listdir(TASKS_DIR):
+            d = task_path(name)
+            meta_file = os.path.join(d, 'meta.json')
+            if os.path.exists(meta_file):
+                with open(meta_file) as f:
+                    tasks.append(json.load(f))
     return jsonify(tasks)
 
 @app.route('/api/tasks/<task_id>', methods=['GET'])

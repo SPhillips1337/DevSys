@@ -62,10 +62,10 @@ def create_followup_task(task_id, reason):
             'priority': 'high'
         }
     }
-        try:
-                requests.post(f"{MANAGER_URL}/api/tasks", json=payload, timeout=5, headers=HEADERS)
-            except Exception as e:
-                print('Failed to create follow-up task', e)
+    try:
+        requests.post(f"{MANAGER_URL}/api/tasks", json=payload, timeout=5, headers=HEADERS)
+    except Exception as e:
+        print('Failed to create follow-up task', e)
 
 
 
@@ -289,10 +289,10 @@ while True:
                 pass
             write_deploy_record(task_dir, record)
             # Update task status to deployed
-                try:
-                    requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'deployed'}, timeout=5, headers=HEADERS)
-                except Exception as e:
-                    print('Failed to update manager status', e)
+            try:
+                requests.post(f"{MANAGER_URL}/api/tasks/{name}/status", json={'status': 'deployed'}, timeout=5, headers=HEADERS)
+            except Exception as e:
+                print('Failed to update manager status', e)
 
             print('Deployed task', name, 'to', final_dir)
             # Perform acceptance check
