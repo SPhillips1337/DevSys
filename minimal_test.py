@@ -6,8 +6,9 @@ import os
 import sys
 
 # Set up environment like CI
-os.environ['WORKSPACE'] = '/workspace'
+os.environ['WORKSPACE'] = '/tmp'
 os.environ['LOG_LEVEL'] = 'INFO'
+os.environ['TESTING'] = 'true'
 sys.path.insert(0, '/workspace')
 
 print("Testing imports step by step...")

@@ -5,11 +5,9 @@ import sys
 import os
 
 # Set up environment
-os.environ['WORKSPACE'] = '/workspace'
+os.environ['WORKSPACE'] = '/tmp'
 os.environ['LOG_LEVEL'] = 'DEBUG'
-
-# Change to workspace directory
-os.chdir('/workspace')
+os.environ['TESTING'] = 'true'
 
 print("Testing imports...")
 

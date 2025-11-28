@@ -104,13 +104,22 @@ def _load_json(path):
 TASK_SCHEMA = _load_json(SCHEMA_PATH)
 PROJECT_SCHEMA = _load_json(PROJECT_SCHEMA_PATH)
 
-# Ensure workspace directories exist
-try:
-    os.makedirs(TASKS_DIR, exist_ok=True)
-    logger.info(f"Workspace initialized at {WORKSPACE}")
-except OSError as e:
-    logger.error(f"Failed to create workspace directory: {e}")
-    raise FilesystemError(f"Cannot create workspace directory: {WORKSPACE}", path=WORKSPACE, cause=e)
+# Lazy initialization flag
+_workspace_initialized = False
+
+def ensure_workspace():
+    """Ensure workspace directories exist (lazy initialization)."""
+    global _workspace_initialized
+    if _workspace_initialized:
+        return
+    
+    try:
+        os.makedirs(TASKS_DIR, exist_ok=True)
+        logger.info(f"Workspace initialized at {WORKSPACE}")
+        _workspace_initialized = True
+    except OSError as e:
+        logger.error(f"Failed to create workspace directory: {e}")
+        raise FilesystemError(f"Cannot create workspace directory: {WORKSPACE}", path=WORKSPACE, cause=e)
 
 
 def task_path(task_id: str) -> str:
@@ -165,6 +174,8 @@ def _handle_deployment_secrets(task_dir: str, deployment: dict, meta: dict) -> N
 @handle_errors("create_task")
 def create_task():
     """Create a new task from user input or project manifest."""
+    ensure_workspace()  # Lazy initialization
+    
     data = request.get_json() or {}
     task_id = data.get('id') or f"task-{uuid.uuid4().hex[:8]}"
     title = data.get('title', 'untitled')
@@ -339,13 +350,15 @@ def list_task_secrets(task_id):
 
 @app.route('/api/tasks', methods=['GET'])
 def list_tasks():
+    ensure_workspace()  # Lazy initialization
     tasks = []
-    for name in os.listdir(TASKS_DIR):
-        d = task_path(name)
-        meta_file = os.path.join(d, 'meta.json')
-        if os.path.exists(meta_file):
-            with open(meta_file) as f:
-                tasks.append(json.load(f))
+    if os.path.exists(TASKS_DIR):
+        for name in os.listdir(TASKS_DIR):
+            d = task_path(name)
+            meta_file = os.path.join(d, 'meta.json')
+            if os.path.exists(meta_file):
+                with open(meta_file) as f:
+                    tasks.append(json.load(f))
     return jsonify(tasks)
 
 @app.route('/api/tasks/<task_id>', methods=['GET'])

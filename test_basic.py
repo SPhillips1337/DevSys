@@ -5,6 +5,7 @@ import os
 # Set up environment
 os.environ['WORKSPACE'] = '/tmp'  # Use /tmp for testing
 os.environ['LOG_LEVEL'] = 'DEBUG'
+os.environ['TESTING'] = 'true'
 sys.path.insert(0, '/workspace')
 
 print("Testing basic imports...")

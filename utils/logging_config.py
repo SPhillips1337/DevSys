@@ -66,18 +66,22 @@ def setup_logging(service_name: str, log_level: str = None) -> logging.Logger:
     console_handler.setFormatter(JSONFormatter())
     logger.addHandler(console_handler)
     
-    # File handler if workspace is available
+    # File handler if workspace is available and writable
     workspace = os.environ.get('WORKSPACE', '/workspace')
-    if workspace and os.path.exists(workspace):
-        log_dir = os.path.join(workspace, 'logs')
-        os.makedirs(log_dir, exist_ok=True)
-        
-        log_file = os.path.join(log_dir, f'{service_name}.log')
-        file_handler = logging.handlers.RotatingFileHandler(
-            log_file, maxBytes=10*1024*1024, backupCount=5
-        )
-        file_handler.setFormatter(JSONFormatter())
-        logger.addHandler(file_handler)
+    if workspace and os.path.exists(workspace) and os.access(workspace, os.W_OK):
+        try:
+            log_dir = os.path.join(workspace, 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+            
+            log_file = os.path.join(log_dir, f'{service_name}.log')
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_file, maxBytes=10*1024*1024, backupCount=5
+            )
+            file_handler.setFormatter(JSONFormatter())
+            logger.addHandler(file_handler)
+        except (OSError, PermissionError):
+            # If we can't create file handler, just use console
+            pass
     
     # Prevent propagation to root logger
     logger.propagate = False

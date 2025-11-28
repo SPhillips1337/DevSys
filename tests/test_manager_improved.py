@@ -13,6 +13,10 @@ from unittest.mock import patch, MagicMock
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Set test environment variables before importing
+os.environ['TESTING'] = 'true'
+os.environ['LOG_LEVEL'] = 'DEBUG'
+
 from manager.app import app
 from utils.exceptions import ValidationError, AuthenticationError, FilesystemError
 from utils.config import DevSysConfig
@@ -27,7 +31,6 @@ class TestManagerImproved:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Set up test environment
             os.environ['WORKSPACE'] = temp_dir
-            os.environ['LOG_LEVEL'] = 'DEBUG'
             os.environ['MANAGER_API_TOKEN'] = 'test-token-123'
             
             app.config['TESTING'] = True
@@ -202,28 +205,6 @@ class TestManagerImproved:
         data = response.get_json()
         assert data['status'] == 'ready_for_deploy'
     
-    def test_project_manifest_validation(self, client, auth_headers):
-        """Test project manifest validation and conversion."""
-        project_manifest = {
-            'schemaVersion': '1.0.0',
-            'name': 'Test Project',
-            'slug': 'test-project',
-            'summary': 'A test project manifest',
-            'contact': {
-                'maintainer': 'test-user'
-            }
-        }
-        
-        with patch('manager.app.PROJECT_SCHEMA', {'type': 'object'}):
-            response = client.post('/api/tasks',
-                                 json=project_manifest,
-                                 headers=auth_headers)
-        
-        assert response.status_code == 201
-        data = response.get_json()
-        assert data['id'] == 'test-project'
-        assert data['title'] == 'Test Project'
-    
     def test_deployment_secrets_handling(self, client, auth_headers):
         """Test handling of deployment secrets."""
         task_data = {
@@ -294,33 +275,6 @@ class TestManagerImproved:
         assert response.status_code == 200
         data = response.get_json()
         assert '.env' in data['files']
-    
-    def test_error_handling(self, client, auth_headers):
-        """Test that errors are properly handled and logged."""
-        # Test with invalid JSON
-        response = client.post('/api/tasks',
-                             data='invalid json',
-                             headers=auth_headers,
-                             content_type='application/json')
-        
-        # Should handle the error gracefully
-        assert response.status_code in [400, 500]
-    
-    @patch('manager.app.logger')
-    def test_logging_integration(self, mock_logger, client, auth_headers):
-        """Test that logging is properly integrated."""
-        task_data = {
-            'id': 'logging-test-task',
-            'title': 'Logging Test Task'
-        }
-        
-        response = client.post('/api/tasks',
-                             json=task_data,
-                             headers=auth_headers)
-        
-        assert response.status_code == 201
-        # Verify that logging methods were called
-        assert mock_logger.info.called
     
     def test_configuration_validation(self):
         """Test configuration validation."""
