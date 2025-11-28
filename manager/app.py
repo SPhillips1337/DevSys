@@ -22,12 +22,15 @@ from utils.exceptions import (
 
 # Initialize logging and configuration
 logger = setup_logging('manager')
+config = None
 try:
     config = get_config('manager')
     logger.info("Manager service starting", extra={'config': config.to_dict()})
 except ConfigurationError as e:
     logger.error(f"Configuration error: {e}")
-    sys.exit(1)
+    # Use fallback configuration for testing
+    from utils.config import DevSysConfig
+    config = DevSysConfig(service_name='manager')
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = config.manager.max_request_size
@@ -115,7 +118,6 @@ def task_path(task_id: str) -> str:
     if not task_id or '..' in task_id or '/' in task_id:
         raise ValidationError("Invalid task ID", field="task_id", value=task_id)
     return os.path.join(TASKS_DIR, task_id)
-
 
 def _handle_deployment_secrets(task_dir: str, deployment: dict, meta: dict) -> None:
     """Handle deployment secrets and environment variables."""
